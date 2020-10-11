@@ -428,7 +428,13 @@ module.exports = function (webpackEnv) {
             // By default we support CSS Modules with the extension .module.css
             {
               test: cssRegex,
-              exclude: cssModuleRegex,
+              include: function (modulePath) {
+                return (
+                  /src\\styles/.test(modulePath) ||
+                  /node_modules/.test(modulePath) ||
+                  /\.override\./.test(modulePath)
+                );
+              },
               use: getStyleLoaders({
                 importLoaders: 1,
                 sourceMap: isEnvProduction && shouldUseSourceMap,
@@ -442,7 +448,14 @@ module.exports = function (webpackEnv) {
             // Adds support for CSS Modules (https://github.com/css-modules/css-modules)
             // using the extension .module.css
             {
-              test: cssModuleRegex,
+              test: cssRegex,
+              exclude: function (modulePath) {
+                return (
+                  /src\\styles/.test(modulePath) ||
+                  /node_modules/.test(modulePath) ||
+                  /\.override\./.test(modulePath)
+                );
+              },
               use: getStyleLoaders({
                 importLoaders: 1,
                 sourceMap: isEnvProduction && shouldUseSourceMap,
