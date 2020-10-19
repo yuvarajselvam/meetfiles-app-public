@@ -53,7 +53,7 @@ class User(Entity):
     @accounts.setter
     def accounts(self, value):
         display_name = "Accounts"
-        validation.check_instance_type(display_name, value, list)
+        validation.check_instance_type(display_name, value, dict)
         self._accounts = value
 
     @property
