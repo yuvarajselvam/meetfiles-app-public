@@ -9,6 +9,7 @@ class Meetspace(Entity):
 
     _name = \
         _owners = \
+        _image_url = \
         _created_by = None
 
     # Properties
@@ -19,7 +20,18 @@ class Meetspace(Entity):
 
     @name.setter
     def name(self, value):
+        display_name = "Name"
+        validation.check_min_length(display_name, value, 3)
         self._name = value
+
+    @property
+    def imageUrl(self):
+        return self._image_url
+
+    @imageUrl.setter
+    def imageUrl(self, value):
+        validation.check_regex_match("Image URL", value, validation.URL_REGEX)
+        self._image_url = value
 
     @property
     def owners(self):

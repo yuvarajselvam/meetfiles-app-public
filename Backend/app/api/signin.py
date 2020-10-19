@@ -12,7 +12,7 @@ from app import app
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
-api = Blueprint('signin', __name__, url_prefix='/signin')
+api = Blueprint('signin', __name__, url_prefix='/api/v1/signin')
 
 base_url = app.config.get('BASE_URL')
 google_auth_base_url = "https://accounts.google.com/o/oauth2/auth"
@@ -33,29 +33,19 @@ azure_scopes = ["User.ReadBasic.All"]
 
 @api.route('/google/')
 def signin_with_google():
-    if app.config.get('FLASK_ENV') != "prod":
-        logger.info(f"Skipping Google Signin for {app.config.get('FLASK_ENV')} environment.")
-        email = request.args.get("email", "yuvi.3198@gmail.com")
-        user = User.find_one({"accounts.google.email": email})
-        if user:
-            user.authenticate()
-            login_user(user)
-            path = '/meetspaces/' if user.meetspaces else '/meetspace/create/'
-            redirect_url = app.config.get('APP_URL') + path
-            return redirect(redirect_url)
-    else:
-        google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
-        auth_url, state = google.authorization_url(google_auth_base_url,
-                                                   access_type="offline", prompt="select_account")
-        session['oauth_state'] = state
-        return redirect(auth_url)
+    print(request.headers)
+    google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
+    auth_url, state = google.authorization_url(google_auth_base_url,
+                                               access_type="offline", prompt="select_account")
+    session['oauth_state'] = state
+    return redirect(auth_url)
 
 
 @api.route('/google/callback/')
 def signin_with_google_callback():
+    print(request.headers)
     if 'oauth_state' not in session:
         return {"message": "Session expired."}, 440
-
     google = OAuth2Session(google_client_id, redirect_uri=google_redirect_uri,
                            state=session['oauth_state'])
     try:
@@ -63,10 +53,10 @@ def signin_with_google_callback():
                                    code=request.args.get('code'))
     except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
-
     user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
+    logger.debug(f"User logging in - {user_info['email']}")
     user = User.find_one({"accounts.google.email": user_info["email"]})
-    path = '/meetspaces/'
+    path = '/get-started/create'
     if not user:
         user_object = {
             "id": "USR" + user_info["id"],
@@ -80,9 +70,10 @@ def signin_with_google_callback():
             "phone": user_info.pop("phone", None)
         }
         user.add_account(google_object, user.primaryAccount)
-        path = '/meetspace/create/'
     user.authenticate()
     login_user(user)
+    if user.meetspaces:
+        path = '/meetspaces'
     session['oauth_token'] = token
     redirect_url = app.config.get('APP_URL') + path
     return redirect(redirect_url)
