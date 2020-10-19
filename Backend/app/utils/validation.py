@@ -40,17 +40,18 @@ def check_max_length(field, value, length):
 
 
 def check_instance_type(field, value, typ):
-    if not isinstance(value, typ):
+    if value and not isinstance(value, typ):
         raise ValueError(f"{field.title()} field should be of {typ}, not {type(value)}.")
 
 
 def check_regex_match(field, value, regex):
-    if isinstance(regex, str):
-        if not re.compile(regex).match(value):
-            raise ValueError(f"Invalid {field.title()}")
-    else:
-        if not regex.match(value):
-            raise ValueError(f"Invalid {field.title()}")
+    if value:
+        if isinstance(regex, str):
+            if not re.compile(regex).match(value):
+                raise ValueError(f"Invalid {field.title()}")
+        else:
+            if not regex.match(value):
+                raise ValueError(f"Invalid {field.title()}")
 
 
 def check_date(field, value):

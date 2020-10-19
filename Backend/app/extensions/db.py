@@ -1,26 +1,24 @@
-import os
-from pymongo import MongoClient
-from urllib.parse import quote_plus
+from flask_pymongo import PyMongo
 
 
 class MongoDB:
-    def __init__(self):
-        self.app = None
-        self.client = None
+    mongo = None
+    uri = None
+    database = None
+
+    def __init__(self, app=None):
+        self.app = app
+        if app is not None:
+            self.init_app(app)
 
     def init_app(self, app):
-        self.app = app
-        self.connect()
+        if app.config['FLASK_ENV'] != 'prod':
+            self.uri = app.config['DEV_MONGODB_URI']
+            self.database = app.config['DEV_MONGODB_DB']
+        self.mongo = PyMongo(app, self.uri, connect=True)
 
-    def connect(self):
-        user = os.getenv("MONGODB_USER")
-        password = os.getenv("MONGODB_PASSWORD")
-        host = os.getenv("MONGODB_HOST_URL")
-        uri = "mongodb://%s:%s@%s" % (quote_plus(user), quote_plus(password), host)
-        self.client = MongoClient(uri)
-        return self.client
-
-    def get_db(self):
-        if not self.client:
-            return self.connect()
-        return self.client
+    def get_conn(self):
+        try:
+            return self.mongo.cx[self.database]
+        except Exception as e:
+            raise ConnectionError

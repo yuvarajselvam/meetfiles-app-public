@@ -1,12 +1,13 @@
 from flask import Flask
-from dotenv import load_dotenv
+
+app = Flask(__name__)
+app.config.from_object('config.LocalConfig')
 
 
 def create_app():
-    app = Flask(__name__)
-    load_dotenv('.env')
-
     from . import extensions
     extensions.init_app(app)
 
+    from .api.signin import api as signin
+    app.register_blueprint(signin)
     return app
