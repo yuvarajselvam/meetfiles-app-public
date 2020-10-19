@@ -10,3 +10,6 @@ venv
 
 # Executables
 ngrok.exe
+
+# Mac OS ignores
+.DS_Store

@@ -12,9 +12,9 @@ from app import app
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
-api = Blueprint('signin', __name__)
+api = Blueprint('signin', __name__, url_prefix='/signin')
 
-base_url = app.config.get('SERVER_NAME')
+base_url = app.config.get('BASE_URL')
 google_auth_base_url = "https://accounts.google.com/o/oauth2/auth"
 google_client_id = app.config.get('GOOGLE_CLIENT_ID')
 google_client_secret = app.config.get('GOOGLE_CLIENT_SECRET')

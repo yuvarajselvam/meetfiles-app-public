@@ -26,7 +26,7 @@ class Config:
 class LocalConfig(Config):
     FLASK_ENV = 'local'
     APP_URL = 'http://localhost:3000'
-    SERVER_NAME = 'http://localmf.in:5000'
+    BASE_URL = 'http://localhost:5000'
     DEV_MONGODB_URI = getenv('DEV_MONGODB_URI')
     DEV_MONGODB_DB = getenv('DEV_MONGODB_DB')
     SESSION_MONGODB = MongoClient(DEV_MONGODB_URI)

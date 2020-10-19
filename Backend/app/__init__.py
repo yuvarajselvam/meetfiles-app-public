@@ -8,6 +8,7 @@ def create_app():
     from . import extensions
     extensions.init_app(app)
 
-    from .api.signin import api as signin
-    app.register_blueprint(signin)
+    from . import api
+    api.init_app(app)
+
     return app
