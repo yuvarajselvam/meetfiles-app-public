@@ -1,16 +1,17 @@
-from flask import Blueprint
-from flask_restplus import Api
+from flask_session import Session
+from flask_login import LoginManager
+from flask_paranoid import Paranoid
 
 from .db import MongoDB
 from .logging import Logger
 
-logger = Logger()
 db = MongoDB()
-
-blueprint = Blueprint('api_v1', __name__, url_prefix="api/v1")
-api = Api(blueprint)
+logger = Logger()
+session = Session()
+paranoid = Paranoid()
+login_manager = LoginManager()
 
 
 def init_app(app):
-    for extension in (logger, db, api):
+    for extension in (logger, db, session, login_manager, paranoid):
         extension.init_app(app)

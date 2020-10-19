@@ -1,8 +1,12 @@
 # Vitrual Environment
 venv
+.env
 
 # IDE Files
 .idea/
 
 # Python Cache
 *__pycache__*
+
+# Executables
+ngrok.exe
