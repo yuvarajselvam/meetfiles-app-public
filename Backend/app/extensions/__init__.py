@@ -13,5 +13,5 @@ login_manager = LoginManager()
 
 
 def init_app(app):
-    for extension in (logger, db, session, login_manager, paranoid):
+    for extension in (logger, db, session, login_manager):
         extension.init_app(app)

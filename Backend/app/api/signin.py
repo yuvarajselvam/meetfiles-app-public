@@ -3,12 +3,13 @@ import uuid
 import logging
 
 from flask_login import login_user
-from flask import Blueprint, session, redirect, request
+from flask import Blueprint, session, redirect
 
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import InvalidGrantError
 
 from app import app
+from app.utils.response import *
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,8 @@ azure_scopes = ["User.ReadBasic.All"]
 
 
 @api.route('/google/')
+@precheck(subdomain=False)
 def signin_with_google():
-    print(request.headers)
     google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
     auth_url, state = google.authorization_url(google_auth_base_url,
                                                access_type="offline", prompt="select_account")
@@ -42,8 +43,8 @@ def signin_with_google():
 
 
 @api.route('/google/callback/')
+@precheck(required_fields=['code'], subdomain=False)
 def signin_with_google_callback():
-    print(request.headers)
     if 'oauth_state' not in session:
         return {"message": "Session expired."}, 440
     google = OAuth2Session(google_client_id, redirect_uri=google_redirect_uri,
@@ -86,6 +87,7 @@ def _build_msal_app():
 
 
 @api.route('/azure/')
+@precheck(subdomain=False)
 def signin_with_azure():
     state = str(uuid.uuid4())
     azure = _build_msal_app()
@@ -96,15 +98,16 @@ def signin_with_azure():
 
 
 @api.route('/azure/callback/')
-def signin_with_azure_callback(self):
+@precheck(required_fields=['code', 'state'], subdomain=False)
+def signin_with_azure_callback():
     if request.args.get('state') != session.get("oauth_state"):
         return {"message": "Session expired."}, 440
 
-    if "error" in request.args or "code" not in request.args:
+    if "error" in request.args:
         return {"message": "Invalid Credentials."}, 401
 
     code = request.args.get('code')
-    azure = self._build_msal_app()
+    azure = _build_msal_app()
     result = azure.acquire_token_by_authorization_code(
         code, azure_scopes, redirect_uri=azure_redirect_uri)
     if "error" in result:

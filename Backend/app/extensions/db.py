@@ -12,13 +12,18 @@ class MongoDB:
             self.init_app(app)
 
     def init_app(self, app):
-        if app.config['FLASK_ENV'] != 'prod':
-            self.uri = app.config['DEV_MONGODB_URI']
-            self.database = app.config['DEV_MONGODB_DB']
+        self.uri = app.config['MONGODB_URI']
+        self.database = app.config['MONGODB_DB']
         self.mongo = PyMongo(app, self.uri, connect=True)
 
     def get_conn(self):
         try:
             return self.mongo.cx[self.database]
+        except Exception as e:
+            raise ConnectionError
+
+    def get_session(self):
+        try:
+            return self.mongo.cx.start_session()
         except Exception as e:
             raise ConnectionError
