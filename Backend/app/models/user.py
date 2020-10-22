@@ -1,5 +1,6 @@
 from enum import Enum
 
+from app import app
 from app.utils import validation
 from app.extensions import login_manager
 from app.models.base import Entity, EntityBase
@@ -13,16 +14,22 @@ class User(Entity):
         _accounts = \
         _primary_account = None
 
-    def get_primary_account_json(self):
-        return self.accounts[self.primaryAccount]
+    def get_primary_account(self):
+        if self._primary_account == self.Account.Type.GOOGLE:
+            return self.Google(self.accounts['google'])
+        elif self._primary_account == self.Account.Type.AZURE:
+            return self.Azure(self.accounts['azure'])
 
     def get_primary_email(self):
-        return self.get_primary_account_json()['email']
+        return self.get_primary_account().email
 
     def add_account(self, account, account_type, save=True):
-        self.Account.Type(account_type.lower())  # For validating account type
+        account_type = self.Account.Type(account_type.lower())  # For validating account type
         self._accounts = dict() if not self._accounts else self._accounts
-        self.accounts[account_type.lower()] = self.Google(account).json()
+        if account_type == self.Account.Type.GOOGLE:
+            self.accounts[account_type.lower()] = self.Google(account).json()
+        elif account_type == self.Account.Type.AZURE:
+            self.accounts[account_type.lower()] = self.Azure(account).json()
         if save:
             self.save()
 
@@ -32,7 +39,7 @@ class User(Entity):
         if not isinstance(role, self.Role):
             raise ValueError(f"Role field should be of type User.Role or str, {type(role)} given.")
         self.meetspaces = dict() if not self._meetspaces else self._meetspaces
-        self.meetspaces[meetspace] = role
+        self.meetspaces[meetspace] = role.value
         if save:
             self.save()
 
@@ -123,10 +130,19 @@ class User(Entity):
 
     class Google(Account):
         _refresh_token = None
+        _token_uri = 'https://accounts.google.com/o/oauth2/token'
+        _client_id = app.config.get('GOOGLE_CLIENT_ID')
+        _client_secret = app.config.get('GOOGLE_CLIENT_SECRET')
 
         def __init__(self, *args, **kwargs):
             self._type = self.Type.GOOGLE.value.lower()
             super().__init__(*args, **kwargs)
+
+        def get_credentials(self):
+            return {'token_uri': self._token_uri,
+                    'client_id': self._client_id,
+                    'client_secret': self._client_secret,
+                    'refresh_token': self._refresh_token}
 
         # Properties
 

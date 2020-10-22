@@ -32,7 +32,7 @@ class Entity(EntityBase):
         _updated_at = \
         _created_at = None
 
-    def save(self, validate=True):
+    def save(self, validate=True, session=None):
         if validate:
             self.validate()
 
@@ -43,11 +43,13 @@ class Entity(EntityBase):
             self._created_at = datetime.utcnow()
 
         self._updated_at = datetime.utcnow()
-        db.get_conn()[self._collection].update_one({"id": self.id}, {"$set": self.json()}, upsert=True)
+        collection = db.get_conn()[self._collection]
+        collection.update_one({"id": self.id}, {"$set": self.json()},
+                              upsert=True, session=session)
 
     @classmethod
-    def find_one(cls, query=None):
-        document = db.get_conn()[cls._collection].find_one(query)
+    def find_one(cls, query=None, session=None):
+        document = db.get_conn()[cls._collection].find_one(query, session=session)
         if not document:
             return
         return cls(document)

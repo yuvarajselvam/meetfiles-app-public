@@ -5,11 +5,12 @@ from app.models.base import Entity
 class Meetspace(Entity):
     _collection = 'meetspaces'
     _resource_prefix = 'MSP'
-    _required_fields = ["name", "owners"]
+    _required_fields = ["name", "owners", "meetspace"]
 
     _name = \
         _owners = \
         _image_url = \
+        _meetsections = \
         _created_by = None
 
     # Properties
@@ -39,8 +40,6 @@ class Meetspace(Entity):
 
     @owners.setter
     def owners(self, value):
-        display_name = "Owners"
-        validation.check_instance_type(display_name, value, list)
         self._owners = value
 
     @property
