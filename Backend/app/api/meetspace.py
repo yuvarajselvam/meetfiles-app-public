@@ -1,42 +1,41 @@
 import logging
 
-from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
-
-from app.utils.response import *
-from app.models.user import User
-from app.models.meetspace import Meetspace
-from app.models.meetsection import Meetsection
+from flask_login import current_user
+from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-
+from app.utils.response import precheck
+from app.models.user import User
+from app.models.meetsection import Meetsection
+from app.models.meetspace import Meetspace
 
 logger = logging.getLogger(__name__)
 api = Blueprint('meetspace', __name__, url_prefix='/api/v1')
 
+RESERVED_SUBDOMAINS = ['app', 'api', 'docs', 'logs', 'status', 'config', 'dev']
 
-@api.route('/meetspace/is_unique/')
+
 @precheck(required_fields=['q'])
-@login_required
 def is_meetspace_name_unique():
     query = request.args.get("q")
     is_unique = Meetspace.find_one({'name': query}) is None
     return {"isUnique": str(is_unique)}, 200
 
 
-@api.route('/meetspace/', methods=['POST'])
 @precheck(required_fields=['name'])
-@login_required
 def create_meetspace():
     request_json = request.get_json()
     current_user_json = current_user.get_primary_account().json()
     current_user_email = current_user_json["email"]
+    meetspace_name = request_json.get('name')
+    if Meetspace.find_one({'name': meetspace_name}) or meetspace_name in RESERVED_SUBDOMAINS:
+        return {"Error": f"Meetspace: `{meetspace_name}` already exists!"}, 409
 
-    if Meetspace.find_one({'name': request_json.get('name')}):
-        return {"Error": f"Meetspace: {request_json.get('name')} already exists!"}, 409
+    if meetspace_name.contains('.'):
+        return {"Error": f"Meetspace name cannot contain a `.` (dot)."}, 400
 
     meetspace_object = {
-        "name": request_json.get("name"),
+        "name": meetspace_name,
         "owners": [current_user_email],
         "createdBy": current_user_email
     }
@@ -50,10 +49,11 @@ def create_meetspace():
 
     try:
         with db.get_session() as session:
-            meetspace = Meetspace(meetspace_object)
-            meetspace.save(session=session)
-            meetsection = Meetsection(meetsection_object)
-            meetsection.save(session=session)
+            with session.start_transaction():
+                meetspace = Meetspace(meetspace_object)
+                meetspace.save(session=session)
+                meetsection = Meetsection(meetsection_object)
+                meetsection.save(session=session)
     except (ValueError, AttributeError) as e:
         return {"Error": str(e)}, 400
 
@@ -62,18 +62,14 @@ def create_meetspace():
     return rv, 201
 
 
-@api.route('/meta/')
-@login_required
-def get_meetspace():
+def get_meetspace_meta():
     subdomain = request.subdomain
     meetspace = Meetspace.find_one({'name': subdomain})
     if not meetspace:
-        return {"Error": f"Meetspace: {subdomain} not found."}, 404
+        return {"Error": f"Meetspace: `{subdomain}` not found."}, 404
     return meetspace.json()
 
 
-@api.route('/meetspaces/')
-@login_required
 def get_all_meetspaces():
     user_json = current_user.json()
     meetspaces = []
@@ -83,3 +79,9 @@ def get_all_meetspaces():
         meetspace = Meetspace.find_one({"name": meetspace_name})
         meetspaces.append(meetspace.json())
     return meetspaces, 200
+
+
+api.add_url_rule('/meetspace/is_unique/', view_func=is_meetspace_name_unique)
+api.add_url_rule('/meetspace/', methods=['POST'], view_func=create_meetspace)
+api.add_url_rule('/meta/', view_func=get_meetspace_meta)
+api.add_url_rule('/meetspaces/', view_func=get_all_meetspaces)

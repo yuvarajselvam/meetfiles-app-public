@@ -17,7 +17,7 @@ class EntityBase:
     def validate(self):
         for field in self._required_fields:
             if not getattr(self, field):
-                formatted_field_name = ''.join(map(lambda x: x if x.islower() else " "+x, field)).title()
+                formatted_field_name = ''.join(map(lambda x: x if x.islower() else " " + x, field)).title()
                 raise KeyError(f"{formatted_field_name} is mandatory.")
 
     def json(self):
@@ -32,12 +32,15 @@ class Entity(EntityBase):
         _updated_at = \
         _created_at = None
 
+    def generate_id(self):
+        return self._resource_prefix + uuid.uuid4().hex
+
     def save(self, validate=True, session=None):
         if validate:
             self.validate()
 
         if not self.id:
-            self.id = uuid.uuid4().hex
+            self.id = self.generate_id()
 
         if not self._created_at:
             self._created_at = datetime.utcnow()
@@ -46,6 +49,15 @@ class Entity(EntityBase):
         collection = db.get_conn()[self._collection]
         collection.update_one({"id": self.id}, {"$set": self.json()},
                               upsert=True, session=session)
+
+    @classmethod
+    def bulk_write(cls, operations):
+        collection = db.get_conn()[cls._collection]
+        with db.get_session() as session:
+            with session.start_transaction():
+                result = collection.bulk_write(operations, ordered=False, session=session)
+        print("Success:", result.bulk_api_result)
+        return result
 
     @classmethod
     def find_one(cls, query=None, session=None):
@@ -61,7 +73,7 @@ class Entity(EntityBase):
     @id.setter
     def id(self, value):
         validation.check_instance_type("id", value, str)
-        self._id = self._resource_prefix + value if not value.startswith(self._resource_prefix) else value
+        self._id = value
 
     @property
     def createdAt(self):

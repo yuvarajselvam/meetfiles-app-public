@@ -1,8 +1,11 @@
 import tldextract as tld
-from flask import Flask, jsonify, request
+
+from flask_login import current_user
+from flask import Flask, request, current_app
 
 app = Flask(__name__)
 app.config.from_object('config.LocalConfig')
+UNPROTECTED_ROUTES = ['signin']
 
 
 def create_app():
@@ -13,12 +16,11 @@ def create_app():
     api.init_app(app)
 
     @app.before_request
-    def extract_subdomain():
-        url_obj = tld.extract(request.headers.get('X-Forwarded-Host'))
+    def before_app_request():
+        url_obj = tld.extract(request.headers.get('Host', ''))
         request.subdomain = url_obj.subdomain
-
-    @app.route('/api/v1/user/1/123/meetsections')
-    def test():
-        return jsonify([{'name': "Engineering", 'id': "1"}, {'name': "Product Management", 'id': "2"}])
+        path = request.path.lstrip('/api/v1/').split('/')
+        if path[0] not in UNPROTECTED_ROUTES and not current_user.is_authenticated:
+            return current_app.login_manager.unauthorized()
 
     return app

@@ -1,4 +1,11 @@
+import pytz
+
 from enum import Enum
+from datetime import datetime
+
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from google.oauth2.credentials import Credentials
 
 from app import app
 from app.utils import validation
@@ -10,9 +17,7 @@ class User(Entity):
     _collection = 'users'
     _resource_prefix = 'USR'
     _required_fields = ["primaryAccount", "accounts"]
-    _meetspaces = \
-        _accounts = \
-        _primary_account = None
+    _meetspaces = _accounts = _primary_account = _timezone = _datetime_format = None
 
     def get_primary_account(self):
         if self._primary_account == self.Account.Type.GOOGLE:
@@ -24,12 +29,12 @@ class User(Entity):
         return self.get_primary_account().email
 
     def add_account(self, account, account_type, save=True):
-        account_type = self.Account.Type(account_type.lower())  # For validating account type
+        account_type = self.Account.Type(account_type.lower())
         self._accounts = dict() if not self._accounts else self._accounts
         if account_type == self.Account.Type.GOOGLE:
-            self.accounts[account_type.lower()] = self.Google(account).json()
+            self.accounts['google'] = self.Google(account).json()
         elif account_type == self.Account.Type.AZURE:
-            self.accounts[account_type.lower()] = self.Azure(account).json()
+            self.accounts['azure'] = self.Azure(account).json()
         if save:
             self.save()
 
@@ -37,7 +42,7 @@ class User(Entity):
         if isinstance(role, str):
             role = self.Role(role.lower())
         if not isinstance(role, self.Role):
-            raise ValueError(f"Role field should be of type User.Role or str, {type(role)} given.")
+            raise ValueError(f"Role field should be of type `User.Role` or `str`, {type(role)} given.")
         self.meetspaces = dict() if not self._meetspaces else self._meetspaces
         self.meetspaces[meetspace] = role.value
         if save:
@@ -71,12 +76,30 @@ class User(Entity):
     def meetspaces(self, value):
         self._meetspaces = value
 
+    @property
+    def timezone(self):
+        return self._timezone
+
+    @timezone.setter
+    def timezone(self, value):
+        pytz.timezone(value)  # For validating timezone value
+        self._timezone = value
+
+    @property
+    def datetimeFormat(self):
+        return self._datetime_format
+
+    @datetimeFormat.setter
+    def datetimeFormat(self, value):
+        self._datetime_format = value
+
     # Enums
 
     # <editor-fold desc="User Role Enum">
     class Role(Enum):
         OWNER = 'owner'
         ADMIN = 'admin'
+
     # </editor-fold>
 
     # Nested classes
@@ -85,9 +108,7 @@ class User(Entity):
         _required_fields = ["email", "name"]
 
         _type = ''
-        _name = \
-            _email = \
-            _image_url = None
+        _name = _email = _image_url = None
 
         @property
         def name(self):
@@ -129,20 +150,53 @@ class User(Entity):
         # </editor-fold>
 
     class Google(Account):
-        _refresh_token = None
+        _refresh_token = _calendar_sync_token = None
         _token_uri = 'https://accounts.google.com/o/oauth2/token'
+        _scopes = ["https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile",
+                   'https://www.googleapis.com/auth/calendar']
         _client_id = app.config.get('GOOGLE_CLIENT_ID')
         _client_secret = app.config.get('GOOGLE_CLIENT_SECRET')
+
+        _calendar_service = None
 
         def __init__(self, *args, **kwargs):
             self._type = self.Type.GOOGLE.value.lower()
             super().__init__(*args, **kwargs)
 
-        def get_credentials(self):
-            return {'token_uri': self._token_uri,
+        def get_calendar_service(self):
+            if not self._calendar_service:
+                auth_user_info = {
+                    'token_uri': self._token_uri,
                     'client_id': self._client_id,
                     'client_secret': self._client_secret,
-                    'refresh_token': self._refresh_token}
+                    'refresh_token': self._refresh_token,
+                    'scopes': self._scopes
+                }
+                creds = Credentials.from_authorized_user_info(auth_user_info)
+                self._calendar_service = build('calendar', 'v3', credentials=creds)
+            return self._calendar_service
+
+        def fetch_google_calendar_events(self):
+            service = self.get_calendar_service()
+            sync_token = self.calendarSyncToken
+            now = datetime.utcnow().isoformat() + 'Z' if sync_token else None
+            events = []
+            page_token = None
+            while True:
+                params = {"calendarId": "primary", "pageToken": page_token,
+                          "syncToken": sync_token, "timeMin": now}
+                request = service.events().list(**params)
+                try:
+                    result = request.execute()
+                except HttpError:
+                    return  # TODO: Handle Sync Token Invalidation: e.resp.status == 410
+                page_token = result.get('nextPageToken')
+                events += result.get('items')
+                if not page_token:
+                    sync_token = result.get('nextSyncToken')
+                    break
+            self.calendarSyncToken = sync_token
+            return events
 
         # Properties
 
@@ -153,6 +207,14 @@ class User(Entity):
         @refreshToken.setter
         def refreshToken(self, value):
             self._refresh_token = value
+
+        @property
+        def calendarSyncToken(self):
+            return self._calendar_sync_token
+
+        @calendarSyncToken.setter
+        def calendarSyncToken(self, value):
+            self._calendar_sync_token = value
 
     class Azure(Account):
         def __init__(self, *args, **kwargs):
