@@ -3,14 +3,15 @@ import uuid
 import logging
 
 from flask_login import login_user
-from flask import Blueprint, session, redirect
+from flask import Blueprint, session, redirect, request
 
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import InvalidGrantError
 
 from app import app
-from app.utils.response import *
 from app.models.user import User
+from app.models.event import Event
+from app.utils.response import precheck
 
 logger = logging.getLogger(__name__)
 api = Blueprint('signin', __name__, url_prefix='/api/v1/signin')
@@ -24,16 +25,15 @@ google_token_url = "https://accounts.google.com/o/oauth2/token"
 google_scopes = [
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
+    'https://www.googleapis.com/auth/calendar'
 ]
 azure_client_id = app.config.get('AZURE_CLIENT_ID')
 azure_client_secret = app.config.get('AZURE_CLIENT_SECRET')
-azure_redirect_uri = base_url + '/api/v1/signin/azure/callback/'
+azure_redirect_uri = 'http://localhost:5000' + '/api/v1/signin/azure/callback/'
 azure_authority = "https://login.microsoftonline.com/common"
-azure_scopes = ["User.ReadBasic.All"]
+azure_scopes = ["User.ReadBasic.All", "Calendars.ReadWrite.Shared"]
 
 
-@api.route('/google/')
-@precheck(subdomain=False)
 def signin_with_google():
     google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
     auth_url, state = google.authorization_url(google_auth_base_url,
@@ -42,8 +42,7 @@ def signin_with_google():
     return redirect(auth_url)
 
 
-@api.route('/google/callback/')
-@precheck(required_fields=['code'], subdomain=False)
+@precheck(required_fields=['code'])
 def signin_with_google_callback():
     if 'oauth_state' not in session:
         return {"message": "Session expired."}, 440
@@ -68,11 +67,17 @@ def signin_with_google_callback():
             "name": user_info["name"],
             "email": user_info["email"],
             "imageUrl": user_info.pop("picture", None),
-            "phone": user_info.pop("phone", None)
+            "phone": user_info.pop("phone", None),
+            "refreshToken": token['refresh_token']
         }
         user.add_account(google_object, user.primaryAccount)
     user.authenticate()
     login_user(user)
+    google = user.get_primary_account()
+    events = google.fetch_google_calendar_events()
+    print(Event.sync_google_events(events, 'yuvi', "yuvi's meetsection", google.email))
+    user.accounts["google"] = google.json()
+    user.save()
     if user.meetspaces:
         path = '/meetspaces'
     session['oauth_token'] = token
@@ -87,7 +92,6 @@ def _build_msal_app():
 
 
 @api.route('/azure/')
-@precheck(subdomain=False)
 def signin_with_azure():
     state = str(uuid.uuid4())
     azure = _build_msal_app()
@@ -97,9 +101,10 @@ def signin_with_azure():
     return redirect(auth_url)
 
 
-@api.route('/azure/callback/')
-@precheck(required_fields=['code', 'state'], subdomain=False)
+@precheck(required_fields=['code', 'state'])
 def signin_with_azure_callback():
+    if 'localhost.com' not in request.url:
+        return redirect(base_url + request.full_path)
     if request.args.get('state') != session.get("oauth_state"):
         return {"message": "Session expired."}, 440
 
@@ -116,3 +121,9 @@ def signin_with_azure_callback():
     accounts = azure.get_accounts()
     result = azure.acquire_token_silent(azure_scopes, account=accounts[0])
     return result
+
+
+api.add_url_rule('/google/', view_func=signin_with_google)
+api.add_url_rule('/google/callback/', view_func=signin_with_google_callback)
+api.add_url_rule('/azure/', view_func=signin_with_azure)
+api.add_url_rule('/azure/callback/', view_func=signin_with_azure_callback)

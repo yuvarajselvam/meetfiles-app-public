@@ -1,16 +1,16 @@
 import logging
 
 from flask import Blueprint, request
-from flask_login import login_required, current_user
+from flask_login import current_user
 
+from app.utils.response import precheck
 from app.models.meetsection import Meetsection
 
 logger = logging.getLogger(__name__)
 api = Blueprint('meetsection', __name__, url_prefix='/api/v1')
 
 
-@api.route('/meetsection', methods=['POST'])
-@login_required
+@precheck(required_fields=['name'])
 def create_meetsection():
     request_json = request.get_json()
     current_user_json = current_user.get_primary_account().json()
@@ -33,3 +33,6 @@ def create_meetsection():
         return {"Error": str(e)}, 400
 
     return meetsection.json(), 201
+
+
+api.add_url_rule('/meetsection/', methods=['POST'], view_func=create_meetsection)
