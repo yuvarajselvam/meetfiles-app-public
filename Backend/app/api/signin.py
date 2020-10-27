@@ -1,5 +1,4 @@
 import msal
-import uuid
 import logging
 
 from flask_login import login_user
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 api = Blueprint('signin', __name__, url_prefix='/api/v1/signin')
 
 base_url = app.config.get('BASE_URL')
-google_auth_base_url = "https://accounts.google.com/o/oauth2/auth"
+google_auth_base = "https://accounts.google.com/o/oauth2/auth"
 google_client_id = app.config.get('GOOGLE_CLIENT_ID')
 google_client_secret = app.config.get('GOOGLE_CLIENT_SECRET')
 google_redirect_uri = base_url + '/api/v1/signin/google/callback/'
@@ -27,16 +26,17 @@ google_scopes = [
     "https://www.googleapis.com/auth/userinfo.profile",
     'https://www.googleapis.com/auth/calendar'
 ]
+azure_auth_base = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 azure_client_id = app.config.get('AZURE_CLIENT_ID')
 azure_client_secret = app.config.get('AZURE_CLIENT_SECRET')
 azure_redirect_uri = 'http://localhost:5000' + '/api/v1/signin/azure/callback/'
-azure_authority = "https://login.microsoftonline.com/common"
-azure_scopes = ["User.ReadBasic.All", "Calendars.ReadWrite.Shared"]
+azure_token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+azure_scopes = ["Calendars.ReadWrite", "User.ReadBasic.All"]
 
 
 def signin_with_google():
     google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
-    auth_url, state = google.authorization_url(google_auth_base_url,
+    auth_url, state = google.authorization_url(google_auth_base,
                                                access_type="offline", prompt="select_account")
     session['oauth_state'] = state
     return redirect(auth_url)
@@ -46,11 +46,10 @@ def signin_with_google():
 def signin_with_google_callback():
     if 'oauth_state' not in session:
         return {"message": "Session expired."}, 440
-    google = OAuth2Session(google_client_id, redirect_uri=google_redirect_uri,
-                           state=session['oauth_state'])
+    google = OAuth2Session(google_client_id, redirect_uri=google_redirect_uri, state=session['oauth_state'])
     try:
-        token = google.fetch_token(google_token_url, client_secret=google_client_secret,
-                                   code=request.args.get('code'))
+        code = request.args.get('code')
+        token = google.fetch_token(google_token_url, client_secret=google_client_secret, code=code)
     except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
     user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
@@ -85,42 +84,27 @@ def signin_with_google_callback():
     return redirect(redirect_url)
 
 
-def _build_msal_app():
-    return msal.ConfidentialClientApplication(azure_client_id,
-                                              client_credential=azure_client_secret,
-                                              authority=azure_authority)
-
-
-@api.route('/azure/')
 def signin_with_azure():
-    state = str(uuid.uuid4())
-    azure = _build_msal_app()
-    auth_url = azure.get_authorization_request_url(azure_scopes, state=state,
-                                                   redirect_uri=azure_redirect_uri)
+    azure = OAuth2Session(azure_client_id, scope=azure_scopes, redirect_uri=azure_redirect_uri)
+    auth_url, state = azure.authorization_url(azure_auth_base, access_type="offline", prompt="select_account")
+    print(auth_url)
     session['oauth_state'] = state
     return redirect(auth_url)
 
 
-@precheck(required_fields=['code', 'state'])
+@precheck(required_fields=['code'])
 def signin_with_azure_callback():
-    if 'localhost.com' not in request.url:
-        return redirect(base_url + request.full_path)
-    if request.args.get('state') != session.get("oauth_state"):
-        return {"message": "Session expired."}, 440
+    if app.config.get('FLASK_ENV') == "dev":
+        if app.config.get('SESSION_COOKIE_DOMAIN') not in request.url:
+            return redirect(base_url + request.full_path)
 
-    if "error" in request.args:
+    azure = OAuth2Session(azure_client_id, redirect_uri=azure_redirect_uri, state=session['oauth_state'])
+    try:
+        code = request.args.get('code')
+        token = azure.fetch_token(azure_token_url, client_secret=azure_client_secret, code=code)
+    except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
-
-    code = request.args.get('code')
-    azure = _build_msal_app()
-    result = azure.acquire_token_by_authorization_code(
-        code, azure_scopes, redirect_uri=azure_redirect_uri)
-    if "error" in result:
-        return {"message": "Invalid Credentials."}, 401
-    session["user"] = result.get("id_token_claims")
-    accounts = azure.get_accounts()
-    result = azure.acquire_token_silent(azure_scopes, account=accounts[0])
-    return result
+    return token
 
 
 api.add_url_rule('/google/', view_func=signin_with_google)
