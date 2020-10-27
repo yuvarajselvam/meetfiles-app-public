@@ -8,6 +8,7 @@ load_dotenv(path.join(basedir, '.env'))
 
 
 class Config:
+    FLASK_ENV = getenv('FLASK_ENV')
     SECRET_KEY = getenv('SECRET_KEY')
     SESSION_TYPE = getenv('SESSION_TYPE')
     SESSION_PERMANENT = getenv('SESSION_PERMANENT')
