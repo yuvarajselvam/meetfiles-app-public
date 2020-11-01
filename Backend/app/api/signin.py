@@ -1,4 +1,5 @@
-import msal
+import json
+import base64
 import logging
 
 from flask_login import login_user
@@ -10,7 +11,7 @@ from oauthlib.oauth2 import InvalidGrantError
 from app import app
 from app.models.user import User
 from app.models.event import Event
-from app.utils.response import precheck
+from app.utils.precheck import precheck
 
 logger = logging.getLogger(__name__)
 api = Blueprint('signin', __name__, url_prefix='/api/v1/signin')
@@ -26,12 +27,12 @@ google_scopes = [
     "https://www.googleapis.com/auth/userinfo.profile",
     'https://www.googleapis.com/auth/calendar'
 ]
-azure_auth_base = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-azure_client_id = app.config.get('AZURE_CLIENT_ID')
-azure_client_secret = app.config.get('AZURE_CLIENT_SECRET')
-azure_redirect_uri = 'http://localhost:5000' + '/api/v1/signin/azure/callback/'
-azure_token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-azure_scopes = ["Calendars.ReadWrite", "User.ReadBasic.All"]
+microsoft_auth_base = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+microsoft_client_id = app.config.get('MICROSOFT_CLIENT_ID')
+microsoft_client_secret = app.config.get('MICROSOFT_CLIENT_SECRET')
+microsoft_redirect_uri = 'http://localhost:5000' + '/api/v1/signin/microsoft/callback/'
+microsoft_token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+microsoft_scopes = ["Calendars.ReadWrite", "User.Read.All", "openid", "email", "offline_access"]
 
 
 def signin_with_google():
@@ -57,16 +58,15 @@ def signin_with_google_callback():
     user = User.find_one({"accounts.google.email": user_info["email"]})
     path = '/get-started/create'
     if not user:
-        user_object = {
-            "id": "USR" + user_info["id"],
-            "primaryAccount": User.Account.Type.GOOGLE.value,
-        }
+        user_object = {"primaryAccount": User.Account.Type.GOOGLE.value}
         user = User(user_object)
         google_object = {
+            "providerId": "USR" + user_info["id"],
             "name": user_info["name"],
             "email": user_info["email"],
             "imageUrl": user_info.pop("picture", None),
             "phone": user_info.pop("phone", None),
+            "accessToken": token['access_token'],
             "refreshToken": token['refresh_token']
         }
         user.add_account(google_object, user.primaryAccount)
@@ -75,8 +75,6 @@ def signin_with_google_callback():
     google = user.get_primary_account()
     events = google.fetch_google_calendar_events()
     print(Event.sync_google_events(events, 'yuvi', "yuvi's meetsection", google.email))
-    user.accounts["google"] = google.json()
-    user.save()
     if user.meetspaces:
         path = '/meetspaces'
     session['oauth_token'] = token
@@ -84,30 +82,67 @@ def signin_with_google_callback():
     return redirect(redirect_url)
 
 
-def signin_with_azure():
-    azure = OAuth2Session(azure_client_id, scope=azure_scopes, redirect_uri=azure_redirect_uri)
-    auth_url, state = azure.authorization_url(azure_auth_base, access_type="offline", prompt="select_account")
-    print(auth_url)
+def signin_with_microsoft():
+    microsoft = OAuth2Session(microsoft_client_id, scope=microsoft_scopes, redirect_uri=microsoft_redirect_uri)
+    auth_url, state = microsoft.authorization_url(microsoft_auth_base, access_type="offline", prompt="select_account")
     session['oauth_state'] = state
     return redirect(auth_url)
 
 
 @precheck(required_fields=['code'])
-def signin_with_azure_callback():
+def signin_with_microsoft_callback():
     if app.config.get('FLASK_ENV') == "dev":
         if app.config.get('SESSION_COOKIE_DOMAIN') not in request.url:
             return redirect(base_url + request.full_path)
 
-    azure = OAuth2Session(azure_client_id, redirect_uri=azure_redirect_uri, state=session['oauth_state'])
+    microsoft = OAuth2Session(microsoft_client_id, redirect_uri=microsoft_redirect_uri, state=session['oauth_state'])
     try:
         code = request.args.get('code')
-        token = azure.fetch_token(azure_token_url, client_secret=azure_client_secret, code=code)
+        token = microsoft.fetch_token(microsoft_token_url, client_secret=microsoft_client_secret, code=code)
     except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
-    return token
+
+    email = _decode_id_token(token['id_token']).get('email')
+    if not email:
+        return {"Message": "No email address is associated with this account."}
+
+    user_info = microsoft.get('https://graph.microsoft.com/v1.0/me').json()
+    logger.debug(f"User logging in - {email}")
+    user = User.find_one({"accounts.microsoft.email": email})
+    path = '/get-started/create'
+    if not user:
+        user_object = {"primaryAccount": User.Account.Type.MICROSOFT.value}
+        user = User(user_object)
+        microsoft_object = {
+            "providerId": "USR" + user_info["id"],
+            "name": user_info["displayName"],
+            "email": email,
+            "imageUrl": user_info.pop("picture", None),
+            "phone": user_info.pop("phone", None),
+            "accessToken": token['access_token'],
+            "refreshToken": token['refresh_token']
+        }
+        user.add_account(microsoft_object, user.primaryAccount)
+    user.authenticate()
+    login_user(user)
+    if user.meetspaces:
+        path = '/meetspaces'
+    microsoft = user.get_primary_account()
+    events = microsoft.fetch_outlook_calendar_events()
+    print(events)
+    print(Event.sync_microsoft_events(events, 'yuvi', "yuvi's meetsection", microsoft.email, microsoft))
+    session['oauth_token'] = token
+    redirect_url = app.config.get('APP_URL') + path
+    return redirect(redirect_url)
+
+
+def _decode_id_token(id_token):
+    id_token = id_token.split('.')[1] + "==="
+    a = json.loads(base64.urlsafe_b64decode(id_token))
+    return a
 
 
 api.add_url_rule('/google/', view_func=signin_with_google)
 api.add_url_rule('/google/callback/', view_func=signin_with_google_callback)
-api.add_url_rule('/azure/', view_func=signin_with_azure)
-api.add_url_rule('/azure/callback/', view_func=signin_with_azure_callback)
+api.add_url_rule('/microsoft/', view_func=signin_with_microsoft)
+api.add_url_rule('/microsoft/callback/', view_func=signin_with_microsoft_callback)

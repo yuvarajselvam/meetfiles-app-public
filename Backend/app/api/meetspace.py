@@ -4,7 +4,7 @@ from flask_login import current_user
 from flask import Blueprint, jsonify, request
 
 from app.extensions import db
-from app.utils.response import precheck
+from app.utils.precheck import precheck
 from app.models.user import User
 from app.models.meetsection import Meetsection
 from app.models.meetspace import Meetspace

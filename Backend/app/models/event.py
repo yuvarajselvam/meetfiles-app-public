@@ -21,6 +21,7 @@ class Event(Entity):
         _original_start = \
         _organizer = \
         _attendees = \
+        _location = \
         _description = \
         _attachments = \
         _status = \
@@ -28,8 +29,8 @@ class Event(Entity):
         _recurrence = \
         _transparency = \
         _web_link = \
+        _provider = \
         _provider_id = \
-        _created_by = \
         _created = \
         _updated = None
 
@@ -51,24 +52,22 @@ class Event(Entity):
             return events_result, ree_result
 
     def from_google_event(self, ev):
-        def _get_datetime(obj):
-            if obj and "dateTime" in obj:
-                return [obj["dateTime"], obj.get("timeZone")]
-            elif obj and "date" in obj:
-                return [obj["date"], obj.get("timeZone")]
-
         utc_now = datetime.datetime.utcnow()
         attendees = ev.get("attendees", [])
         self.attendees = []
         for attendee in attendees:
+            is_resource = attendee.get("resource")
+            if is_resource:
+                continue
             response = attendee.get("responseStatus")
-            response = "notResponded" if response == "needsAction" else response
+            response = "none" if response == "needsAction" else response
             self.attendees.append({
                 "email": attendee.get("email"),
-                "responseStatus": response
+                "responseStatus": response,
+                "optional": attendee.get("optional", False)
             })
-
         attachments = ev.get("attachments")
+        self.attachments = []
         if attachments:
             for attachment in attachments:
                 self.attachments.append({
@@ -83,13 +82,81 @@ class Event(Entity):
         self.end = _get_datetime(ev.get("end"))
         self.summary = ev.get("summary")
         self.organizer = ev.get("organizer", {}).get("email")
+        self.location = ev.get("location")
         self.description = ev.get("description")
         self.status = ev.get("status")
-        self.createdBy = ev.get("creator", {}).get("email")
-        self.created = dt_util.get_datetime(ev.get("created")) if "created" in ev else None
-        self.updated = dt_util.get_datetime(ev.get("updated")) if "updated" in ev else None
+        self.created = ev.get("created")
+        self.updated = ev.get("updated")
+        self.provider = "google"
         self.providerId = ev["id"]
         self.transparency = ev.get("transparency")
+        self.webLink = ev.get("htmlLink")
+        self.recurrence = ev.get("recurrence")
+        self.isRecurring = ev.get("recurrence") is not None
+        self.id = self.generate_id()
+        self.createdAt = utc_now
+        self.updatedAt = utc_now
+
+    @classmethod
+    def sync_microsoft_events(cls, events, meetspace, meetsection, user, service):
+        if events:
+            bulk_write_data = {"events": [], "recurring_exception_events": []}
+            REE = RecurringExceptionEvent
+            for ev in events:
+                if not ev.get("type") == "occurrence":
+                    recurring_event_id = ev.get("seriesMasterId")
+                    params = {"meetspace": meetspace, "meetsection": meetsection, "user": user}
+                    event = Event(params) if not recurring_event_id else REE(params)
+                    event.recurringEventProviderId = recurring_event_id
+                    event.from_microsoft_event(ev, service)
+                    operation = UpdateOne({"providerId": event.providerId, "user": user}, {"$set": event.json()}, upsert=True)
+                    bulk_write_data[event._collection].append(operation)
+            events_result = Event.bulk_write(bulk_write_data['events'])
+            ree_result = REE.bulk_write(bulk_write_data['recurring_exception_events'])
+            return events_result, ree_result
+
+    def from_microsoft_event(self, ev, service):
+        utc_now = datetime.datetime.utcnow()
+        attendees = ev.get("attendees", [])
+        self.attendees = []
+        for attendee in attendees:
+            attendee_type = attendee.get("type")
+            if (not attendee_type) or attendee_type == "resource":
+                continue
+            response = attendee.get("status", {}).get("response")
+            response = "none" if response == "notresponded" else response
+            response = "tentative" if response == "tentativelyaccepted" else response
+            response = "accepted" if response == "organizer" else response
+            self.attendees.append({
+                "email": attendee.get("emailAddress", {}).get("address"),
+                "responseStatus": response,
+                "optional": attendee_type == "optional"
+            })
+        has_attachments = ev.get("hasAttachments")
+        self.attachments = []
+        if has_attachments:
+            attachments = service.fetch_event_attachments(ev["id"])['value']
+            for attachment in attachments:
+                self.attachments.append({
+                    "id": attachment.get("id"),
+                    "url": attachment.get("fileUrl"),
+                    "type": attachment.get("contentType"),
+                    "external": True
+                })
+
+        self.start = _get_datetime(ev.get("start"))
+        self.originalStart = _get_datetime(ev.get("originalStartTime"))
+        self.end = _get_datetime(ev.get("end"))
+        self.summary = ev.get("subject")
+        self.organizer = ev.get("organizer", {}).get("emailAddress", {}).get("address")
+        self.location = ev.get("location")
+        self.description = ev.get("body", {}).get("content")
+        self.status = "cancelled" if ev.get("isCancelled") else "confirmed"
+        self.created = ev.get("createdDateTime")
+        self.updated = ev.get("lastModifiedDateTime")
+        self.provider = "microsoft"
+        self.providerId = ev["id"]
+        self.webLink = ev.get("webLink")
         self.recurrence = ev.get("recurrence")
         self.isRecurring = ev.get("recurrence") is not None
         self.id = self.generate_id()
@@ -164,11 +231,19 @@ class Event(Entity):
 
     @property
     def attendees(self):
-        return self._attendees if self._attendees else []
+        return self._attendees
 
     @attendees.setter
     def attendees(self, value):
         self._attendees = value
+
+    @property
+    def location(self):
+        return self._location
+
+    @location.setter
+    def location(self, value):
+        self._location = value
 
     @property
     def description(self):
@@ -180,7 +255,7 @@ class Event(Entity):
 
     @property
     def attachments(self):
-        return self._attachments if self._attachments else []
+        return self._attachments
 
     @attachments.setter
     def attachments(self, value):
@@ -231,6 +306,14 @@ class Event(Entity):
         self._web_link = value
 
     @property
+    def provider(self):
+        return self._provider
+
+    @provider.setter
+    def provider(self, value):
+        self._provider = value
+
+    @property
     def providerId(self):
         return self._provider_id
 
@@ -239,20 +322,12 @@ class Event(Entity):
         self._provider_id = value
 
     @property
-    def createdBy(self):
-        return self._created_by
-
-    @createdBy.setter
-    def createdBy(self, value):
-        self._created_by = value
-
-    @property
     def created(self):
         return self._created
 
     @created.setter
     def created(self, value):
-        self._created = value
+        self._created = dt_util.get_datetime(value)
 
     @property
     def updated(self):
@@ -260,7 +335,7 @@ class Event(Entity):
 
     @updated.setter
     def updated(self, value):
-        self._updated = value
+        self._updated = dt_util.get_datetime(value)
 
     # Enums
 
@@ -299,3 +374,10 @@ class RecurringExceptionEvent(Event):
     @recurringEventProviderId.setter
     def recurringEventProviderId(self, value):
         self._recurring_event_provider_id = value
+
+
+def _get_datetime(obj):
+    if obj and "dateTime" in obj:
+        return [obj["dateTime"], obj.get("timeZone")]
+    elif obj and "date" in obj:
+        return [obj["date"], obj.get("timeZone")]

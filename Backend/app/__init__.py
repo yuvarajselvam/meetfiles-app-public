@@ -5,9 +5,7 @@ from flask_login import current_user
 from flask import Flask, request, current_app
 
 app = Flask(__name__)
-
-if getenv('FLASK_ENV') == "dev":
-    app.config.from_object('config.LocalConfig')
+app.config.from_object('config.LocalConfig')
 UNPROTECTED_ROUTES = ['signin']
 
 

@@ -7,6 +7,12 @@ def get_datetime(value):
         tz = None
         if isinstance(value, (tuple, list)):
             value, tz = value
+
+        if '.' in value:
+            value = value.split('.')
+            value[1] = value[1][:6]
+            value = '.'.join(value)
+
         try:
             value = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S.%f%z' if '.' in value else '%Y-%m-%dT%H:%M:%S%z')
         except ValueError:
