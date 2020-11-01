@@ -3,7 +3,7 @@ import logging
 from flask import Blueprint, request
 from flask_login import current_user
 
-from app.utils.response import precheck
+from app.utils.precheck import precheck
 from app.models.meetsection import Meetsection
 
 logger = logging.getLogger(__name__)
