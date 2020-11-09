@@ -12,6 +12,7 @@ from app import app
 from app.models.user import User
 from app.models.event import Event
 from app.utils.precheck import precheck
+from app.models.base.account import Account
 
 logger = logging.getLogger(__name__)
 api = Blueprint('signin', __name__, url_prefix='/api/v1/signin')
@@ -58,8 +59,8 @@ def signin_with_google_callback():
     user = User.find_one({"accounts.google.email": user_info["email"]})
     path = '/get-started/create'
     if not user:
-        user_object = {"primaryAccount": User.Account.Type.GOOGLE.value}
-        user = User(user_object)
+        user_object = {"primaryAccount": Account.Type.GOOGLE.value}
+        user = User(**user_object)
         google_object = {
             "providerId": "USR" + user_info["id"],
             "name": user_info["name"],
@@ -73,7 +74,7 @@ def signin_with_google_callback():
     user.authenticate()
     login_user(user)
     google = user.get_primary_account()
-    events = google.fetch_google_calendar_events()
+    events = google.fetch_calendar_events()
     print(Event.sync_google_events(events, 'yuvi', "yuvi's meetsection", google.email))
     if user.meetspaces:
         path = '/meetspaces'
@@ -111,8 +112,8 @@ def signin_with_microsoft_callback():
     user = User.find_one({"accounts.microsoft.email": email})
     path = '/get-started/create'
     if not user:
-        user_object = {"primaryAccount": User.Account.Type.MICROSOFT.value}
-        user = User(user_object)
+        user_object = {"primaryAccount": Account.Type.MICROSOFT.value}
+        user = User(**user_object)
         microsoft_object = {
             "providerId": "USR" + user_info["id"],
             "name": user_info["displayName"],
@@ -128,7 +129,7 @@ def signin_with_microsoft_callback():
     if user.meetspaces:
         path = '/meetspaces'
     microsoft = user.get_primary_account()
-    events = microsoft.fetch_outlook_calendar_events()
+    events = microsoft.fetch_calendar_events()
     print(events)
     print(Event.sync_microsoft_events(events, 'yuvi', "yuvi's meetsection", microsoft.email, microsoft))
     session['oauth_token'] = token

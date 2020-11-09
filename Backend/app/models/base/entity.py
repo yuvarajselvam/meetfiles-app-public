@@ -3,21 +3,16 @@ import inspect
 from datetime import datetime
 
 from app.extensions import db
-from app.utils import validation
 
 
 class EntityBase:
     _collection = None
     _required_fields = []
 
-    def __init__(self, *args, **kwargs):
-        [setattr(self, k, v) for arg in args for k, v in arg.items() if hasattr(self, k)]
-        [setattr(self, k, v) for k, v in kwargs.items() if hasattr(self, k)]
-
     def validate(self):
-        for field in self._required_fields:
-            if not getattr(self, field):
-                formatted_field_name = ''.join(map(lambda x: x if x.islower() else " " + x, field)).title()
+        for f in self._required_fields:
+            if not getattr(self, f):
+                formatted_field_name = ''.join(map(lambda x: x if x.islower() else " " + x, f)).title()
                 raise KeyError(f"{formatted_field_name} is mandatory.")
 
     def json(self):
@@ -28,9 +23,14 @@ class EntityBase:
 class Entity(EntityBase):
     _resource_prefix = ''
 
-    _id = \
-        _updated_at = \
-        _created_at = None
+    def __init__(self,
+                 id: str = None,
+                 createdAt: datetime = None,
+                 updatedAt: datetime = None,
+                 *args, **kwargs):
+        self.id = id
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
 
     def generate_id(self):
         return self._resource_prefix + uuid.uuid4().hex
@@ -65,7 +65,14 @@ class Entity(EntityBase):
         document = db.get_conn()[cls._collection].find_one(query, session=session)
         if not document:
             return
-        return cls(document)
+        return cls(**document)
+
+    @classmethod
+    def find(cls, query=None, session=None):
+        documents = db.get_conn()[cls._collection].find_one(query, session=session)
+        if not documents:
+            return
+        return list(documents)
 
     @property
     def id(self):
@@ -73,7 +80,6 @@ class Entity(EntityBase):
 
     @id.setter
     def id(self, value):
-        validation.check_instance_type("id", value, str)
         self._id = value
 
     @property
