@@ -1,13 +1,13 @@
 import logging
 
-from flask import Blueprint, request
 from flask_login import current_user
+from flask import Blueprint, request, jsonify
 
 from app.utils.precheck import precheck
 from app.models.meetsection import Meetsection
 
 logger = logging.getLogger(__name__)
-api = Blueprint('meetsection', __name__, url_prefix='/api/v1')
+api = Blueprint('meetsections', __name__, url_prefix='/api/v1/meetsections')
 
 
 @precheck(required_fields=['name'])
@@ -15,8 +15,8 @@ def create_meetsection():
     request_json = request.get_json()
     current_user_json = current_user.get_primary_account().json()
     current_user_email = current_user_json["email"]
-    members = set(request_json.get('members'))
-    members.add(current_user_email)
+    members = request_json.get('members') or []
+    members.append(current_user_email)
 
     meetsection_object = {
         "name": request_json.get('name'),
@@ -27,7 +27,7 @@ def create_meetsection():
     }
 
     try:
-        meetsection = Meetsection(meetsection_object)
+        meetsection = Meetsection(**meetsection_object)
         meetsection.save()
     except (ValueError, AttributeError) as e:
         return {"Error": str(e)}, 400
@@ -35,4 +35,10 @@ def create_meetsection():
     return meetsection.json(), 201
 
 
-api.add_url_rule('/meetsection/', methods=['POST'], view_func=create_meetsection)
+def list_meetsections():
+    meetsections = Meetsection.fetch_for_user("imyuvarajselvam@gmail.com")
+    return jsonify(meetsections), 200
+
+
+api.add_url_rule('/', methods=['POST'], view_func=create_meetsection)
+api.add_url_rule('/', methods=['GET'], view_func=list_meetsections)

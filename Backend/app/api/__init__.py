@@ -4,3 +4,6 @@ def init_app(app):
 
     from .meetspace import api as meetspace_bs
     app.register_blueprint(meetspace_bs)
+
+    from .meetsection import api as meetsection_bs
+    app.register_blueprint(meetsection_bs)

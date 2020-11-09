@@ -50,9 +50,9 @@ def create_meetspace():
     try:
         with db.get_session() as session:
             with session.start_transaction():
-                meetspace = Meetspace(meetspace_object)
+                meetspace = Meetspace(**meetspace_object)
                 meetspace.save(session=session)
-                meetsection = Meetsection(meetsection_object)
+                meetsection = Meetsection(**meetsection_object)
                 meetsection.save(session=session)
     except (ValueError, AttributeError) as e:
         return {"Error": str(e)}, 400

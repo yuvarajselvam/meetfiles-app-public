@@ -14,7 +14,7 @@ def precheck(required_fields: list):
                 return f(*args, **kwargs)
 
             for k in required_fields:
-                if k not in request_json:
+                if not request_json or k not in request_json:
                     return {"Error": f"`{k}` field is mandatory."}, 400
 
             return f(*args, **kwargs)
