@@ -8,6 +8,10 @@ from app.models.base.account import Account
 
 
 class UserBase(Entity):
+    _collection = 'users'
+    _resource_prefix = 'USR'
+    _required_fields = ["primaryAccount"]
+
     def __init__(self,
                  primaryAccount: Union[Account.Type, str] = None,
                  accounts: dict = None,
