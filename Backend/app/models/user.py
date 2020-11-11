@@ -7,9 +7,9 @@ class User(UserBase):
     def get_primary_account(self):
         account = None
         if self.primaryAccount == Account.Type.GOOGLE.value:
-            account = Google(self.accounts['google'])
+            account = Google(**self.accounts['google'])
         elif self.primaryAccount == Account.Type.MICROSOFT.value:
-            account = Microsoft(self.accounts['microsoft'])
+            account = Microsoft(**self.accounts['microsoft'])
         if account:
             account._user = self
         return account
