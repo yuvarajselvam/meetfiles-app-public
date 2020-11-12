@@ -19,12 +19,12 @@ class UserBase(Entity):
                  timezone: str = None,
                  datetimeFormat: str = None,
                  *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.primaryAccount = primaryAccount
         self.accounts = accounts or dict()
         self.meetspaces = meetspaces or dict()
         self.timezone = timezone
         self.datetimeFormat = datetimeFormat
-        super().__init__(*args, **kwargs)
 
     # Properties
 

@@ -14,12 +14,12 @@ class MeetspaceBase(Entity):
                  meetsections: list = None,
                  createdBy: str = None,
                  *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = name
         self.owners = owners or []
         self.imageUrl = imageUrl
         self.meetsections = meetsections or []
         self.createdBy = createdBy
-        super().__init__(*args, **kwargs)
 
     # Properties
 
