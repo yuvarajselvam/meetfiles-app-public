@@ -3,17 +3,21 @@ import datetime
 from pymongo.operations import UpdateOne
 
 from app.models.base.event_base import EventBase
+from app.utils.datetime import get_rrule_from_pattern
 
 
 class Event(EventBase):
     @classmethod
-    def sync_google_events(cls, events, meetspace, meetsection, user):
+    def sync_google_events(cls, events, account):
+        user = account.email
+        meetsection = account.name + "'s Meetsection"
+
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetspace": meetspace, "meetsection": meetsection, "user": user}
+                params = {"meetsection": meetsection, "user": user}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
@@ -70,17 +74,23 @@ class Event(EventBase):
         self.updatedAt = utc_now
 
     @classmethod
-    def sync_microsoft_events(cls, events, meetspace, meetsection, user, service):
+    def sync_microsoft_events(cls, events, account):
+        user = account.email
+        meetsection = account.name + "'s Meetsection"
+        service = account.get_service()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
                 if not ev.get("type") == "occurrence":
                     recurring_event_id = ev.get("seriesMasterId")
-                    params = {"meetspace": meetspace, "meetsection": meetsection, "user": user}
+                    params = {"meetsection": meetsection, "user": user}
                     event = Event(**params) if not recurring_event_id else REE(**params)
                     event.recurringEventProviderId = recurring_event_id
-                    event.from_microsoft_event(ev, service)
+                    if ev.get("@removed"):
+                        event.isDeleted = True
+                    else:
+                        event.from_microsoft_event(ev, service)
                     operation = UpdateOne({"providerId": event.providerId, "user": user}, {"$set": event.json()}, upsert=True)
                     bulk_write_data[event._collection].append(operation)
             events_result = Event.bulk_write(bulk_write_data['events'])
@@ -117,7 +127,7 @@ class Event(EventBase):
                 })
 
         self.start = _get_datetime(ev.get("start"))
-        self.originalStart = _get_datetime(ev.get("originalStartTime"))
+        self.originalStart = ev.get("originalStart")
         self.end = _get_datetime(ev.get("end"))
         self.summary = ev.get("subject")
         self.organizer = ev.get("organizer", {}).get("emailAddress", {}).get("address")
@@ -129,8 +139,9 @@ class Event(EventBase):
         self.provider = "microsoft"
         self.providerId = ev["id"]
         self.webLink = ev.get("webLink")
-        self.recurrence = ev.get("recurrence")
-        self.isRecurring = ev.get("recurrence") is not None
+        rp = ev.get("recurrence")
+        self.recurrence = get_rrule_from_pattern(rp)
+        self.isRecurring = rp is not None
         self.id = self.generate_id()
         self.createdAt = utc_now
         self.updatedAt = utc_now
@@ -145,7 +156,8 @@ class RecurringExceptionEvent(Event):
 
     def generate_id(self):
         # Converts original start time into utc and calculates unix timestamp
-        unix_milli_timestamp = str(int(self.originalStart.astimezone(tz=datetime.timezone.utc).timestamp() * 1000))
+        original_start_utc = self.originalStart.astimezone(tz=datetime.timezone.utc)
+        unix_milli_timestamp = str(int(original_start_utc.timestamp() * 1000))
         return self._recurring_event_provider_id + '__' + unix_milli_timestamp
 
     # Properties

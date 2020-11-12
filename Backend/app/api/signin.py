@@ -73,9 +73,7 @@ def signin_with_google_callback():
         user.add_account(google_object, user.primaryAccount)
     user.authenticate()
     login_user(user)
-    google = user.get_primary_account()
-    events = google.fetch_calendar_events()
-    print(Event.sync_google_events(events, 'yuvi', "yuvi's meetsection", google.email))
+    user.sync_calendars()
     if user.meetspaces:
         path = '/meetspaces'
     session['oauth_token'] = token
@@ -128,10 +126,7 @@ def signin_with_microsoft_callback():
     login_user(user)
     if user.meetspaces:
         path = '/meetspaces'
-    microsoft = user.get_primary_account()
-    events = microsoft.fetch_calendar_events()
-    print(events)
-    print(Event.sync_microsoft_events(events, 'yuvi', "yuvi's meetsection", microsoft.email, microsoft))
+    user.sync_calendars()
     session['oauth_token'] = token
     redirect_url = app.config.get('APP_URL') + path
     return redirect(redirect_url)

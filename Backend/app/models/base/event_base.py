@@ -33,7 +33,9 @@ class EventBase(Entity):
                  providerId: str = None,
                  created: datetime.datetime = None,
                  updated: datetime.datetime = None,
+                 isDeleted: bool = None,
                  *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.meetspace = meetspace
         self.meetsection = meetsection
         self.user = user
@@ -55,7 +57,7 @@ class EventBase(Entity):
         self.providerId = providerId
         self.created = created
         self.updated = updated
-        super().__init__(*args, **kwargs)
+        self.isDeleted = isDeleted
 
     # Properties
 
@@ -230,6 +232,14 @@ class EventBase(Entity):
     @updated.setter
     def updated(self, value):
         self._updated = dt_util.get_datetime(value)
+
+    @property
+    def isDeleted(self):
+        return self._is_deleted
+
+    @isDeleted.setter
+    def isDeleted(self, value):
+        self._is_deleted = value
 
     # Enums
 

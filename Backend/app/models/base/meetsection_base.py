@@ -15,13 +15,13 @@ class MeetsectionBase(Entity):
                  createdBy: str = None,
                  description: str = None,
                  *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = name
         self.events = events or []
         self.members = members or []
         self.meetspace = meetspace
         self.createdBy = createdBy
         self.description = description
-        super().__init__(*args, **kwargs)
 
     # Properties
 

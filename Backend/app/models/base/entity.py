@@ -52,6 +52,7 @@ class Entity(EntityBase):
 
     @classmethod
     def bulk_write(cls, operations):
+        result = None
         if operations:
             collection = db.get_conn()[cls._collection]
             with db.get_session() as session:

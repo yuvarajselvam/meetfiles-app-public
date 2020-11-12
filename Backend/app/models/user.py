@@ -1,18 +1,24 @@
+from app.models.event import Event
 from app.extensions import login_manager
 from app.models.base.user_base import UserBase
 from app.models.base.account import Account, Google, Microsoft
 
 
 class User(UserBase):
-    def get_primary_account(self):
+    def get_account(self, account_type):
         account = None
-        if self.primaryAccount == Account.Type.GOOGLE.value:
+        if account_type == Account.Type.GOOGLE.value:
             account = Google(**self.accounts['google'])
-        elif self.primaryAccount == Account.Type.MICROSOFT.value:
+        elif account_type == Account.Type.MICROSOFT.value:
             account = Microsoft(**self.accounts['microsoft'])
+        else:
+            raise ValueError('Invalid account type')
         if account:
             account._user = self
         return account
+
+    def get_primary_account(self):
+        return self.get_account(self.primaryAccount)
 
     def get_primary_email(self):
         account = self.get_primary_account()
@@ -21,9 +27,9 @@ class User(UserBase):
     def add_account(self, account, account_type, save=True):
         account_type = Account.Type(account_type.lower())
         if account_type == Account.Type.GOOGLE:
-            self.accounts['google'] = Google(account).json()
+            self.accounts['google'] = Google(**account).json()
         elif account_type == Account.Type.MICROSOFT:
-            self.accounts['microsoft'] = Microsoft(account).json()
+            self.accounts['microsoft'] = Microsoft(**account).json()
         if save:
             self.save()
 
@@ -36,6 +42,15 @@ class User(UserBase):
         self.meetspaces[meetspace] = role.value
         if save:
             self.save()
+
+    def sync_calendars(self):
+        print(self.accounts)
+        for account_type in self.accounts:
+            account = self.get_account(account_type)
+            print(account.json())
+            calendar = account.get_calendar()
+            print(calendar.json())
+            calendar.sync_events()
 
     # Flask login - Properties
 
