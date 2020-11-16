@@ -20,15 +20,16 @@ class Account(EntityBase):
 
     def __init__(self,
                  name: str = None,
+                 type: str = None,
                  email: str = None,
                  imageUrl: str = None,
                  providerId: str = None,
                  accessToken: str = None,
                  refreshToken: str = None,
                  *args, **kwargs):
-        self._type = ''
         self._user = None
         self.name = name
+        self._type = type
         self.email = email
         self.imageUrl = imageUrl
         self.providerId = providerId
@@ -38,12 +39,11 @@ class Account(EntityBase):
     def update_token(self, token):
         self.accessToken = token.get("access_token")
         self.refreshToken = token.get("refresh_token")
-        self._user.accounts[self._type] = self.json()
+        [d.update(self.json()) for d in self._user.accounts if d["type"] == self.type]
 
     def get_calendar(self):
         calendar = Calendar.find_one(query={"user": self.email, "provider": self._type})
         if not calendar:
-            print(self._type)
             calendar = Calendar(user=self.email, provider=self._type)
         calendar._account = self
         return calendar
@@ -57,6 +57,14 @@ class Account(EntityBase):
         display_name = "Name"
         validation.check_min_length(display_name, value, 1)
         self._name = value
+
+    @property
+    def type(self):
+        return self._type
+
+    @type.setter
+    def type(self, value):
+        self._type = value
 
     @property
     def email(self):
@@ -120,7 +128,7 @@ class Google(Account):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._type = self.Type.GOOGLE.value.lower()
+        self.type = self.Type.GOOGLE.value.lower()
 
     def get_credentials(self):
         google = self
@@ -149,7 +157,7 @@ class Microsoft(Account):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._type = self.Type.MICROSOFT.value.lower()
+        self.type = self.Type.MICROSOFT.value.lower()
         self._service = None
 
     def get_service(self):

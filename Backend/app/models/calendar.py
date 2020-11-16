@@ -27,11 +27,26 @@ class Calendar(CalendarBase):
         return self._service
 
     def get_google_service(self):
+        if not self._account:
+            raise AssertionError("Account not set for Calendar object.")
         creds = self._account.get_credentials()
         return build('calendar', 'v3', credentials=creds)
 
     def get_microsoft_service(self):
         return self._account.get_service()
+
+    def add_event(self, event: Event):
+        if self.provider == "google":
+            self.create_google_event(event)
+        elif self.provider == "microsoft":
+            self.create_microsoft_event(event)
+        event.save()
+
+    def create_google_event(self, event: Event):
+        pass
+
+    def create_microsoft_event(self, event: Event):
+        pass
 
     def sync_events(self):
         if self.provider == "google":

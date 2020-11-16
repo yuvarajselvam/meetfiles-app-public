@@ -10,7 +10,6 @@ from oauthlib.oauth2 import InvalidGrantError
 
 from app import app
 from app.models.user import User
-from app.models.event import Event
 from app.utils.precheck import precheck
 from app.models.base.account import Account
 
@@ -56,7 +55,7 @@ def signin_with_google_callback():
         return {"message": "Invalid Credentials."}, 401
     user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
     logger.debug(f"User logging in - {user_info['email']}")
-    user = User.find_one({"accounts.google.email": user_info["email"]})
+    user = User.find_one({"accounts.email": user_info['email'], "accounts.type": "google"})
     path = '/get-started/create'
     if not user:
         user_object = {"primaryAccount": Account.Type.GOOGLE.value}
@@ -107,7 +106,7 @@ def signin_with_microsoft_callback():
 
     user_info = microsoft.get('https://graph.microsoft.com/v1.0/me').json()
     logger.debug(f"User logging in - {email}")
-    user = User.find_one({"accounts.microsoft.email": email})
+    user = User.find_one({"accounts.email": email, "accounts.type": "microsoft"})
     path = '/get-started/create'
     if not user:
         user_object = {"primaryAccount": Account.Type.MICROSOFT.value}
