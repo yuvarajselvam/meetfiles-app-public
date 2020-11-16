@@ -1,4 +1,3 @@
-from app.models.event import Event
 from app.extensions import login_manager
 from app.models.base.user_base import UserBase
 from app.models.base.account import Account, Google, Microsoft
@@ -6,16 +5,21 @@ from app.models.base.account import Account, Google, Microsoft
 
 class User(UserBase):
     def get_account(self, account_type):
-        account = None
+        acc = next(filter(lambda a: a["type"] == account_type, self.accounts), None)
         if account_type == Account.Type.GOOGLE.value:
-            account = Google(**self.accounts['google'])
+            account = Google(**acc)
         elif account_type == Account.Type.MICROSOFT.value:
-            account = Microsoft(**self.accounts['microsoft'])
+            account = Microsoft(**acc)
         else:
             raise ValueError('Invalid account type')
-        if account:
-            account._user = self
+        account._user = self
         return account
+
+    def get_account_by_email(self, email):
+        acc = next(filter(lambda a: a["email"] == email, self.accounts), None)
+        if not acc:
+            return
+        return self.get_account(acc["type"])
 
     def get_primary_account(self):
         return self.get_account(self.primaryAccount)
@@ -27,9 +31,9 @@ class User(UserBase):
     def add_account(self, account, account_type, save=True):
         account_type = Account.Type(account_type.lower())
         if account_type == Account.Type.GOOGLE:
-            self.accounts['google'] = Google(**account).json()
+            self.accounts.append(Google(**account).json())
         elif account_type == Account.Type.MICROSOFT:
-            self.accounts['microsoft'] = Microsoft(**account).json()
+            self.accounts.append(Microsoft(**account).json())
         if save:
             self.save()
 
@@ -45,8 +49,8 @@ class User(UserBase):
 
     def sync_calendars(self):
         print(self.accounts)
-        for account_type in self.accounts:
-            account = self.get_account(account_type)
+        for acc in self.accounts:
+            account = self.get_account(acc["type"])
             print(account.json())
             calendar = account.get_calendar()
             print(calendar.json())

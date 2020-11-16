@@ -14,14 +14,14 @@ class UserBase(Entity):
 
     def __init__(self,
                  primaryAccount: Union[Account.Type, str] = None,
-                 accounts: dict = None,
+                 accounts: list = None,
                  meetspaces: dict = None,
                  timezone: str = None,
                  datetimeFormat: str = None,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.primaryAccount = primaryAccount
-        self.accounts = accounts or dict()
+        self.accounts = accounts or []
         self.meetspaces = meetspaces or dict()
         self.timezone = timezone
         self.datetimeFormat = datetimeFormat
