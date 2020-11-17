@@ -47,13 +47,22 @@ class User(UserBase):
         if save:
             self.save()
 
-    def sync_calendars(self):
+    def sync_calendars(self, initial=False):
         print(self.accounts)
+        if initial:
+            from app.models.meetsection import Meetsection
+            primary_account = self.get_primary_account()
+            meetsection_object = {
+                "name": Meetsection.get_default_name(primary_account.name),
+                "members": [primary_account.email],
+                "description": Meetsection.get_personal_desc(),
+                "createdBy": "system"
+            }
+            meetsection = Meetsection(**meetsection_object)
+            meetsection.save()
         for acc in self.accounts:
             account = self.get_account(acc["type"])
-            print(account.json())
             calendar = account.get_calendar()
-            print(calendar.json())
             calendar.sync_events()
 
     # Flask login - Properties

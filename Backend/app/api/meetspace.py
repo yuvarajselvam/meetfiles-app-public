@@ -43,7 +43,7 @@ def create_meetspace():
         "name": Meetsection.get_default_name(current_user_json['name']),
         "members": [current_user_email],
         "meetspace": meetspace_object['name'],
-        "description": Meetsection.get_default_desc(),
+        "description": Meetsection.get_personal_desc(),
         "createdBy": current_user_email
     }
 

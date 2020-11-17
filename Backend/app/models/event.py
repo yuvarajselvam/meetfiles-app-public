@@ -10,14 +10,14 @@ class Event(EventBase):
     @classmethod
     def sync_google_events(cls, events, account):
         user = account.email
-        meetsection = account.name + "'s Meetsection"
-
+        from app.models.meetsection import Meetsection
+        meetsection = Meetsection.get_default(account.email)
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetsection": meetsection, "user": user}
+                params = {"meetsection": meetsection.id, "user": user}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
@@ -56,10 +56,13 @@ class Event(EventBase):
         self.start = _get_datetime(ev.get("start"))
         self.originalStart = _get_datetime(ev.get("originalStartTime"))
         self.end = _get_datetime(ev.get("end"))
-        self.summary = ev.get("summary")
+        self.title = ev.get("summary")
         self.organizer = ev.get("organizer", {}).get("email")
         self.location = ev.get("location")
+        if ev.get("start"):
+            self.isAllDay = "date" in ev.get("start")
         self.description = ev.get("description")
+        self.conferenceData = ev.get("conferenceData")
         self.status = ev.get("status")
         self.created = ev.get("created")
         self.updated = ev.get("updated")
@@ -73,18 +76,30 @@ class Event(EventBase):
         self.createdAt = utc_now
         self.updatedAt = utc_now
 
+    def to_google_event(self):
+        google_object = {
+            "summary": self.title,
+            "start": {"date" if self.isAllDay else "dateTime": self.start.isoformat()},
+            "end": {"date" if self.isAllDay else "dateTime": self.end.isoformat()},
+            "attendees": self.attendees,
+            "location": self.location,
+            "description": self.description
+        }
+        return google_object
+
     @classmethod
     def sync_microsoft_events(cls, events, account):
         user = account.email
-        meetsection = account.name + "'s Meetsection"
         service = account.get_service()
+        from app.models.meetsection import Meetsection
+        meetsection = Meetsection.get_default(account.email)
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
                 if not ev.get("type") == "occurrence":
                     recurring_event_id = ev.get("seriesMasterId")
-                    params = {"meetsection": meetsection, "user": user}
+                    params = {"meetsection": meetsection.id, "user": user}
                     event = Event(**params) if not recurring_event_id else REE(**params)
                     event.recurringEventProviderId = recurring_event_id
                     if ev.get("@removed"):
@@ -129,9 +144,10 @@ class Event(EventBase):
         self.start = _get_datetime(ev.get("start"))
         self.originalStart = ev.get("originalStart")
         self.end = _get_datetime(ev.get("end"))
-        self.summary = ev.get("subject")
+        self.title = ev.get("subject")
         self.organizer = ev.get("organizer", {}).get("emailAddress", {}).get("address")
         self.location = ev.get("location")
+        self.isAllDay = ev.get("isAllDay")
         self.description = ev.get("body", {}).get("content")
         self.status = "cancelled" if ev.get("isCancelled") else "confirmed"
         self.created = ev.get("createdDateTime")

@@ -16,7 +16,8 @@ def create_meetsection():
     current_user_json = current_user.get_primary_account().json()
     current_user_email = current_user_json["email"]
     members = request_json.get('members') or []
-    members.append(current_user_email)
+    if current_user_email not in members:
+        members.append(current_user_email)
 
     meetsection_object = {
         "name": request_json.get('name'),

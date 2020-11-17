@@ -3,15 +3,19 @@ from app.models.base.meetsection_base import MeetsectionBase
 
 class Meetsection(MeetsectionBase):
 
-    _DEFAULT_DESC = "This is your personal meetsection."
+    _PERSONAL_DESC = "This is your personal meetsection."
 
     @classmethod
     def get_default_name(cls, user_name):
-        return user_name + "'s Meetsection"
+        return user_name + "'s Meetsection" if user_name else "Default Meetsection"
 
     @classmethod
-    def get_default_desc(cls):
-        return cls._DEFAULT_DESC
+    def get_personal_desc(cls):
+        return cls._PERSONAL_DESC
+
+    @classmethod
+    def get_default(cls, email):
+        return cls.find_one({"members": email, "createdBy": "system"})
 
     @classmethod
     def fetch_for_user(cls, user_email):

@@ -1,3 +1,5 @@
+import time
+import uuid
 import logging
 
 from urllib import parse
@@ -15,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class Calendar(CalendarBase):
-
     CALENDAR_MAX_END = "2050-12-31 23:59:59.999Z"
 
     def get_service(self):
@@ -35,18 +36,57 @@ class Calendar(CalendarBase):
     def get_microsoft_service(self):
         return self._account.get_service()
 
-    def add_event(self, event: Event):
+    def add_event(self, event: Event, video_conf_type=None):
         if self.provider == "google":
-            self.create_google_event(event)
+            self.add_google_event(event, video_conf_type)
         elif self.provider == "microsoft":
-            self.create_microsoft_event(event)
+            pass
         event.save()
+        return event
 
-    def create_google_event(self, event: Event):
-        pass
+    def add_google_event(self, event: Event, video_conf_type=None):
+        def _get_conf_data_req_obj():
+            return {"createRequest": {"conferenceSolutionKey": {"type": "hangoutsMeet"}, "requestId": uuid.uuid4().hex}}
 
-    def create_microsoft_event(self, event: Event):
-        pass
+        def _wait_till_conf_create(_ev):
+            _status = _ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
+            if _status and _status["statusCode"] == "pending":
+                wait_time = 0
+                multiplier = 1
+                while _status and _status["statusCode"] == "pending":
+                    wait_time += (.5 * multiplier)
+                    time.sleep(wait_time)
+                    _ev = service.events().get(calendarId='primary', eventId=ev.get("id")).execute()
+                    _status = ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
+                    multiplier += 1
+            return _ev
+
+        service = self.get_service()
+        google_event = event.to_google_event()
+        if video_conf_type == "meet":
+            google_event["conferenceData"] = _get_conf_data_req_obj()
+        print(google_event)
+        try:
+            ev = service.events() \
+                .insert(calendarId='primary', body=google_event, conferenceDataVersion=1) \
+                .execute()
+            print(ev)
+            if video_conf_type == "meet":
+                ev = _wait_till_conf_create(ev)
+                status = ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
+                if status and status == "failure":
+                    body = {"conferenceData": _get_conf_data_req_obj()}
+                    ev = service.events() \
+                        .patch(calendarId='primary', eventId=ev.get("id"), body=body, conferenceDataVersion=1) \
+                        .execute()
+                    ev = _wait_till_conf_create(ev)
+                    status = ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
+                    if status and status == "failure":
+                        raise NotImplementedError
+            event.from_google_event(ev)
+        except GoogleHttpError as e:
+            print(e.resp, e.content, e.error_details)
+            raise
 
     def sync_events(self):
         if self.provider == "google":
@@ -57,6 +97,8 @@ class Calendar(CalendarBase):
             events = self.fetch_microsoft_events()
             print(events)
             print(Event.sync_microsoft_events(events, self._account))
+        self.lastSyncedAt = datetime.utcnow()
+        self.save()
 
     def fetch_google_events(self):
         print("Fetching google events")
@@ -79,8 +121,6 @@ class Calendar(CalendarBase):
                 sync_token = result.get('nextSyncToken')
                 break
         self.syncToken = sync_token
-        self.lastSyncedAt = datetime.utcnow()
-        self.save()
         return events
 
     def fetch_microsoft_events(self):
