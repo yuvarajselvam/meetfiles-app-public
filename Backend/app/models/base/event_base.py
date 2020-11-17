@@ -15,14 +15,16 @@ class EventBase(Entity):
                  meetspace: str = None,
                  meetsection: str = None,
                  user: str = None,
-                 summary: str = None,
+                 title: str = None,
                  start: datetime.datetime = None,
                  end: datetime.datetime = None,
                  originalStart: datetime.datetime = None,
                  organizer: str = None,
                  attendees: dict = None,
+                 isAllDay: bool = None,
                  location: str = None,
                  description: str = None,
+                 conferenceData: dict = None,
                  attachments: dict = None,
                  status: str = None,
                  isRecurring: bool = None,
@@ -39,14 +41,16 @@ class EventBase(Entity):
         self.meetspace = meetspace
         self.meetsection = meetsection
         self.user = user
-        self.summary = summary
+        self.title = title
         self.start = start
         self.end = end
         self.originalStart = originalStart
         self.organizer = organizer
         self.attendees = attendees or dict()
+        self.isAllDay = isAllDay
         self.location = location
         self.description = description
+        self.conferenceData = conferenceData or dict()
         self.attachments = attachments or dict()
         self.status = status
         self.isRecurring = isRecurring
@@ -86,12 +90,12 @@ class EventBase(Entity):
         self._user = value
 
     @property
-    def summary(self):
-        return self._summary
+    def title(self):
+        return self._title
 
-    @summary.setter
-    def summary(self, value):
-        self._summary = value
+    @title.setter
+    def title(self, value):
+        self._title = value
 
     @property
     def originalStart(self):
@@ -132,6 +136,14 @@ class EventBase(Entity):
     @attendees.setter
     def attendees(self, value):
         self._attendees = value
+
+    @property
+    def isAllDay(self):
+        return self._is_all_day
+
+    @isAllDay.setter
+    def isAllDay(self, value):
+        self._is_all_day = value
 
     @property
     def location(self):
