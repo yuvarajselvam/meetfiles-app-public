@@ -146,7 +146,7 @@ class Event(EventBase):
         self.end = _get_datetime(ev.get("end"))
         self.title = ev.get("subject")
         self.organizer = ev.get("organizer", {}).get("emailAddress", {}).get("address")
-        self.location = ev.get("location")
+        self.location = ev.get("location", {}).get("displayName")
         self.isAllDay = ev.get("isAllDay")
         self.description = ev.get("body", {}).get("content")
         self.status = "cancelled" if ev.get("isCancelled") else "confirmed"
@@ -161,6 +161,20 @@ class Event(EventBase):
         self.id = self.generate_id()
         self.createdAt = utc_now
         self.updatedAt = utc_now
+
+    def to_microsoft_event(self):
+        microsoft_object = {
+            "subject": self.title,
+            "body": {
+                "contentType": "HTML",
+                "content": self.description
+            },
+            "start": {"dateTime": self.start.isoformat()},
+            "end": {"dateTime": self.end.isoformat()},
+            "location": {"displayName": self.location},
+            "attendees": [attendee["email"] for attendee in self.attendees]
+        }
+        return microsoft_object
 
 
 class RecurringExceptionEvent(Event):

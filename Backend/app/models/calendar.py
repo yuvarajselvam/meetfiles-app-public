@@ -12,6 +12,7 @@ from googleapiclient.errors import HttpError as GoogleHttpError
 
 from app.models.event import Event
 from app.models.base.calendar_base import CalendarBase
+from app.models.base.event_base import VideoConferenceType
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class Calendar(CalendarBase):
         if self.provider == "google":
             self.add_google_event(event, video_conf_type)
         elif self.provider == "microsoft":
-            pass
+            self.add_microsoft_event(event, video_conf_type)
         event.save()
         return event
 
@@ -63,7 +64,7 @@ class Calendar(CalendarBase):
 
         service = self.get_service()
         google_event = event.to_google_event()
-        if video_conf_type == "meet":
+        if video_conf_type == VideoConferenceType.GOOGLE_MEET.value:
             google_event["conferenceData"] = _get_conf_data_req_obj()
         print(google_event)
         try:
@@ -71,7 +72,7 @@ class Calendar(CalendarBase):
                 .insert(calendarId='primary', body=google_event, conferenceDataVersion=1) \
                 .execute()
             print(ev)
-            if video_conf_type == "meet":
+            if video_conf_type == VideoConferenceType.GOOGLE_MEET.value:
                 ev = _wait_till_conf_create(ev)
                 status = ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
                 if status and status == "failure":
@@ -87,6 +88,18 @@ class Calendar(CalendarBase):
         except GoogleHttpError as e:
             print(e.resp, e.content, e.error_details)
             raise
+
+    def add_microsoft_event(self, event, video_conf_type):
+        service = self.get_service()
+        microsoft_event = event.to_microsoft_event()
+        url = "https://graph.microsoft.com/v1.0/me/events"
+        result = service.post(url, data=microsoft_event)
+        try:
+            result.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            print(str(e))
+            raise
+        event.from_microsoft_event(result)
 
     def sync_events(self):
         if self.provider == "google":

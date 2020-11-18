@@ -9,7 +9,6 @@ class MeetsectionBase(Entity):
 
     def __init__(self,
                  name: str = None,
-                 events: list = None,
                  members: list = None,
                  meetspace: str = None,
                  createdBy: str = None,
@@ -17,7 +16,6 @@ class MeetsectionBase(Entity):
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = name
-        self.events = events or []
         self.members = members or []
         self.meetspace = meetspace
         self.createdBy = createdBy
@@ -34,16 +32,6 @@ class MeetsectionBase(Entity):
         display_name = "Name"
         validation.check_min_length(display_name, value, 3)
         self._name = value
-
-    @property
-    def events(self):
-        return self._events
-
-    @events.setter
-    def events(self, value):
-        display_name = "Events"
-        validation.check_instance_type(display_name, value, list)
-        self._events = value
 
     @property
     def members(self):

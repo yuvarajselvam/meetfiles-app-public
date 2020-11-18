@@ -25,7 +25,7 @@ class Meetsection(MeetsectionBase):
             meetsection.pop('_id')
             meetsection["type"] = "self"
             meetsection["events"] = []
-            events = cls(meetsection).fetch_events()
+            events = cls(**meetsection).fetch_events()
             for event in events:
                 ev = {
                     "id": event.get("id"),
@@ -53,4 +53,4 @@ class Meetsection(MeetsectionBase):
     def fetch_events(self):
         from app.models.event import Event
         self.members = self.members
-        return Event.find({"status": {"$ne": "cancelled"}})
+        return Event.find({"status": {"$ne": "cancelled"}, "meetsection": self.id})
