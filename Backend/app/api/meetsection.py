@@ -37,7 +37,7 @@ def create_meetsection():
 
 
 def list_meetsections():
-    meetsections = Meetsection.fetch_for_user("imyuvarajselvam@gmail.com")
+    meetsections = Meetsection.fetch_for_user(current_user.get_primary_email())
     return jsonify(meetsections), 200
 
 

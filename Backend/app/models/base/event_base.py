@@ -268,3 +268,10 @@ class EventBase(Entity):
         OPAQUE = "opaque"
         TRANSPARENT = "transparent"
     # </editor-fold>
+
+
+# <editor-fold desc="Event Status Enum" default="collapsed">
+class VideoConferenceType(Enum):
+    ZOOM = "zoom"
+    GOOGLE_MEET = "google_meet"
+# </editor-fold>
