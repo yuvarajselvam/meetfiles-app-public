@@ -9,7 +9,7 @@ from app.utils.datetime import get_rrule_from_pattern
 class Event(EventBase):
     @classmethod
     def sync_google_events(cls, events, account):
-        user = account.email
+        user = account.get_user_id()
         from app.models.meetsection import Meetsection
         meetsection = Meetsection.get_default(account.email)
         if events:
@@ -89,7 +89,7 @@ class Event(EventBase):
 
     @classmethod
     def sync_microsoft_events(cls, events, account):
-        user = account.email
+        user = account.get_user_id()
         service = account.get_service()
         from app.models.meetsection import Meetsection
         meetsection = Meetsection.get_default(account.email)

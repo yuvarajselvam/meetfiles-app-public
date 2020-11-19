@@ -3,7 +3,6 @@ import logging
 from flask_login import current_user
 from flask import Blueprint, request, jsonify
 
-from app.models.user import User
 from app.models.event import Event
 
 logger = logging.getLogger(__name__)
@@ -14,11 +13,9 @@ def create_event():
     req_json = request.get_json()
     user = current_user
     if not user:
-        return {"Error": f"User `{req_json['email']}` does not exist"}, 400
+        return {"message": f"User `{req_json['email']}` does not exist"}, 400
     account = user.get_account_by_email(req_json["email"])
     calendar = account.get_calendar()
-    req_json["start"] = req_json.pop("start", None)
-    req_json["end"] = req_json.pop("end", None)
     req_json["user"] = req_json.pop("email", None)
     req_json["meetsection"] = req_json.pop("meetSection", None)
     conf_type = req_json.pop("linkType")

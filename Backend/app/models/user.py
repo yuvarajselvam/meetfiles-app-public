@@ -54,7 +54,7 @@ class User(UserBase):
             primary_account = self.get_primary_account()
             meetsection_object = {
                 "name": Meetsection.get_default_name(primary_account.name),
-                "members": [primary_account.email],
+                "members": [{"email": primary_account.email, "role": Meetsection.Role.OWNER.value}],
                 "description": Meetsection.get_personal_desc(),
                 "createdBy": "system"
             }

@@ -104,7 +104,7 @@ def signin_with_microsoft_callback():
 
     email = _decode_id_token(token['id_token']).get('email')
     if not email:
-        return {"Message": "No email address is associated with this account."}
+        return {"message": "No email address is associated with this account."}
 
     user_info = microsoft.get('https://graph.microsoft.com/v1.0/me').json()
     logger.debug(f"User logging in - {email}")

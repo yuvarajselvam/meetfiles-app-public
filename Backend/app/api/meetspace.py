@@ -29,10 +29,10 @@ def create_meetspace():
     current_user_email = current_user_json["email"]
     meetspace_name = request_json.get('name')
     if Meetspace.find_one({'name': meetspace_name}) or meetspace_name in RESERVED_SUBDOMAINS:
-        return {"Error": f"Meetspace: `{meetspace_name}` already exists!"}, 409
+        return {"message": f"Meetspace: `{meetspace_name}` already exists!"}, 409
 
     if meetspace_name.contains('.'):
-        return {"Error": f"Meetspace name cannot contain a `.` (dot)."}, 400
+        return {"message": f"Meetspace name cannot contain a `.` (dot)."}, 400
 
     meetspace_object = {
         "name": meetspace_name,
@@ -41,7 +41,7 @@ def create_meetspace():
     }
     meetsection_object = {
         "name": Meetsection.get_default_name(current_user_json['name']),
-        "members": [current_user_email],
+        "members": [{"email": current_user_email, "role": Meetsection.Role.OWNER.value}],
         "meetspace": meetspace_object['name'],
         "description": Meetsection.get_personal_desc(),
         "createdBy": current_user_email
@@ -55,7 +55,7 @@ def create_meetspace():
                 meetsection = Meetsection(**meetsection_object)
                 meetsection.save(session=session)
     except (ValueError, AttributeError) as e:
-        return {"Error": str(e)}, 400
+        return {"message": str(e)}, 400
 
     current_user.add_meetspace(meetspace_object['name'], User.Role.OWNER)
     rv = {"meetspace": meetspace.json(), "meetsection": meetsection.json()}
@@ -66,7 +66,7 @@ def get_meetspace_meta():
     subdomain = request.subdomain
     meetspace = Meetspace.find_one({'name': subdomain})
     if not meetspace:
-        return {"Error": f"Meetspace: `{subdomain}` not found."}, 404
+        return {"message": f"Meetspace: `{subdomain}` not found."}, 404
     return meetspace.json()
 
 
