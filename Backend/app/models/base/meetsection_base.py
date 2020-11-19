@@ -1,3 +1,5 @@
+from enum import Enum
+
 from app.utils import validation
 from app.models.base.entity import Entity
 
@@ -16,7 +18,7 @@ class MeetsectionBase(Entity):
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = name
-        self.members = members or []
+        self.members = members or list()
         self.meetspace = meetspace
         self.createdBy = createdBy
         self.description = description
@@ -66,3 +68,8 @@ class MeetsectionBase(Entity):
     @createdBy.setter
     def createdBy(self, value):
         self._created_by = value
+
+    class Role(Enum):
+        USER = "user"
+        INVITED_USER = "invited_user"
+        OWNER = "owner"

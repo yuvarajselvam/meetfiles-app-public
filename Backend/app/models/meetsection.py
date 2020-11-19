@@ -5,27 +5,11 @@ class Meetsection(MeetsectionBase):
 
     _PERSONAL_DESC = "This is your personal meetsection."
 
-    @classmethod
-    def get_default_name(cls, user_name):
-        return user_name + "'s Meetsection" if user_name else "Default Meetsection"
-
-    @classmethod
-    def get_personal_desc(cls):
-        return cls._PERSONAL_DESC
-
-    @classmethod
-    def get_default(cls, email):
-        return cls.find_one({"members": email, "createdBy": "system"})
-
-    @classmethod
-    def fetch_for_user(cls, user_email):
-        meetsections = cls.find({"members": user_email})
-        result = []
-        for meetsection in meetsections:
-            meetsection.pop('_id')
-            meetsection["type"] = "self"
-            meetsection["events"] = []
-            events = cls(**meetsection).fetch_events()
+    def json(self, deep=False):
+        result = super().json()
+        if deep:
+            result["events"] = []
+            events = self.fetch_events()
             for event in events:
                 ev = {
                     "id": event.get("id"),
@@ -46,9 +30,30 @@ class Meetsection(MeetsectionBase):
                     ev["attendees"] = []
                     for attendee in event.get("attendees"):
                         ev["attendees"].append({"displayName": attendee})
-                meetsection["events"].append(ev)
-            result.append(meetsection)
+                result["events"].append(ev)
         return result
+
+    def add_user(self, user_email):
+        self.members.append({"email": user_email, "role": self.Role.USER.value})
+
+    def remove_user(self, user_email):
+        self.members = [member for member in self.members if not member["email"] == user_email]
+
+    @classmethod
+    def get_default_name(cls, user_name):
+        return user_name + "'s Meetsection" if user_name else "Default Meetsection"
+
+    @classmethod
+    def get_personal_desc(cls):
+        return cls._PERSONAL_DESC
+
+    @classmethod
+    def get_default(cls, email):
+        return cls.find_one({"members.email": email, "createdBy": "system"})
+
+    @classmethod
+    def fetch_for_user(cls, user_email):
+        return cls.find({"members.email": user_email})
 
     def fetch_events(self):
         from app.models.event import Event

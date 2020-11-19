@@ -2,6 +2,9 @@ def init_app(app):
     from .signin import api as signin_bp
     app.register_blueprint(signin_bp)
 
+    from .user import api as user_bp
+    app.register_blueprint(user_bp)
+
     from .meetspace import api as meetspace_bp
     app.register_blueprint(meetspace_bp)
 
