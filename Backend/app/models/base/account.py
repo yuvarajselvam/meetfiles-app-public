@@ -39,6 +39,9 @@ class Account(EntityBase):
     def get_user_id(self):
         return self._user.id
 
+    def get_user(self):
+        return self._user
+
     def update_token(self, token):
         self.accessToken = token.get("access_token")
         self.refreshToken = token.get("refresh_token")

@@ -3,7 +3,7 @@ import datetime
 from pymongo.operations import UpdateOne
 
 from app.models.base.event_base import EventBase
-from app.utils.datetime import get_rrule_from_pattern
+from app.utils.datetime import get_rrule_from_pattern, get_datetime
 
 
 class Event(EventBase):
@@ -175,6 +175,29 @@ class Event(EventBase):
             "attendees": [attendee["email"] for attendee in self.attendees]
         }
         return microsoft_object
+
+    def to_api_object(self):
+        ev = {
+            "id": self.id,
+            "name": self.title,
+            "description": self.description,
+            "attendees": [{"displayName": attendee["email"]} for attendee in self.attendees]
+        }
+
+        start = self.start
+        if start:
+            ev["start"] = {"date": start.strftime("%Y-%m-%d"), "time": start.strftime("%I:%M %p")}
+        end = self.end
+        if end:
+            ev["end"] = {"date": end.strftime("%Y-%m-%d"), "time": end.strftime("%I:%M %p")}
+
+        return ev
+
+    @classmethod
+    def fetch_by_date_range(cls, start, end):
+        query = {"start": {"$gte": get_datetime(start), "$lt": get_datetime(end)}}
+        events = cls.find(query)
+        return [cls(ev).to_api_object() for ev in events]
 
 
 class RecurringExceptionEvent(Event):

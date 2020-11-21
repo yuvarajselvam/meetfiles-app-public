@@ -21,6 +21,7 @@ class EventBase(Entity):
                  originalStart: datetime.datetime = None,
                  organizer: str = None,
                  attendees: dict = None,
+                 followUp: str = None,
                  isAllDay: bool = None,
                  location: str = None,
                  description: str = None,
@@ -47,6 +48,7 @@ class EventBase(Entity):
         self.originalStart = originalStart
         self.organizer = organizer
         self.attendees = attendees or dict()
+        self.followUp = followUp
         self.isAllDay = isAllDay
         self.location = location
         self.description = description
@@ -136,6 +138,14 @@ class EventBase(Entity):
     @attendees.setter
     def attendees(self, value):
         self._attendees = value
+
+    @property
+    def followUp(self):
+        return self._follow_up
+
+    @followUp.setter
+    def followUp(self, value):
+        self._follow_up = value
 
     @property
     def isAllDay(self):
@@ -255,7 +265,7 @@ class EventBase(Entity):
 
     # Enums
 
-    # <editor-fold desc="Event Status Enum">
+    # <editor-fold desc="Event Status Enum" default="collapsed">
     class Status(Enum):
         CONFIRMED = "confirmed"
         TENTATIVE = "tentative"
