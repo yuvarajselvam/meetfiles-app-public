@@ -72,7 +72,7 @@ class Entity(EntityBase):
     def find(cls, query=None, session=None):
         documents = db.get_conn()[cls._collection].find_one(query, session=session)
         if not documents:
-            return
+            return []
         return list(documents)
 
     @property

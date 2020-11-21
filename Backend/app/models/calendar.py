@@ -37,11 +37,15 @@ class Calendar(CalendarBase):
     def get_microsoft_service(self):
         return self._account.get_service()
 
-    def add_event(self, event: Event, video_conf_type=None):
+    def add_event(self, event: Event, follow_up=None, video_conf_type=None):
         if self.provider == "google":
             self.add_google_event(event, video_conf_type)
         elif self.provider == "microsoft":
             self.add_microsoft_event(event, video_conf_type)
+        if follow_up:
+            event.followUp = follow_up.id
+            follow_up.add_event(event)
+            follow_up.save()
         event.save()
         return event
 
@@ -89,7 +93,7 @@ class Calendar(CalendarBase):
             print(e.resp, e.content, e.error_details)
             raise
 
-    def add_microsoft_event(self, event, video_conf_type):
+    def add_microsoft_event(self, event, video_conf_type=None):
         service = self.get_service()
         microsoft_event = event.to_microsoft_event()
         url = "https://graph.microsoft.com/v1.0/me/events"
@@ -126,8 +130,12 @@ class Calendar(CalendarBase):
             request = service.events().list(**params)
             try:
                 result = request.execute()
-            except GoogleHttpError:
-                return  # TODO: Handle Sync Token Invalidation: e.resp.status == 410
+            except GoogleHttpError as e:
+                if not e.resp.status == 410:
+                    raise
+                params.pop("syncToken", None)
+                params["timeMin"] = self._account.get_user().createdAt
+                result = service.events().list(**params).execute()
             page_token = result.get('nextPageToken')
             events += result.get('items')
             if not page_token:
@@ -148,13 +156,15 @@ class Calendar(CalendarBase):
             params = {"StartDateTime": now, "EndDateTime": end,
                       "$deltatoken": sync_token, "$skiptoken": page_token}
             headers = {"Prefer": "odata.maxpagesize=50"}
-            result = service.get(f"{graph_url}/me/calendarView/delta",
-                                 params=params, headers=headers)
+            result = service.get(f"{graph_url}/me/calendarView/delta", params=params, headers=headers)
             try:
                 result.raise_for_status()
-            except requests.exceptions.HTTPError:
-                logger.debug(f"Http Error - {result.json()}")
-                return  # TODO: Handle Sync Token Invalidation: e.resp.status == 410
+            except requests.exceptions.HTTPError as e:
+                if not e.response.status_code == 410:
+                    raise
+                params = {"StartDateTime": self._account.get_user().createdAt, "EndDateTime": end}
+                result = service.get(f"{graph_url}/me/calendarView/delta", params=params, headers=headers)
+                result.raise_for_status()
             result = result.json()
             events += result.get('value')
             next_link = result.get('@odata.nextLink')

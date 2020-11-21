@@ -47,7 +47,8 @@ def list_meetsections():
 
 def get_meetsection(meetsection_id):
     meetsection = Meetsection.find_one(query={"id": meetsection_id})
-    return meetsection.json(deep=True), 200
+    status_code = 200 if not meetsection else 404
+    return meetsection.json(deep=True), status_code
 
 
 def edit_meetsection(meetsection_id):
@@ -92,9 +93,9 @@ def is_meetsection_name_unique():
     return {"isUnique": str(is_unique)}, 200
 
 
-api.add_url_rule('/', methods=['POST'], view_func=create_meetsection)
 api.add_url_rule('/', view_func=list_meetsections)
 api.add_url_rule('/<meetsection_id>/', view_func=get_meetsection)
+api.add_url_rule('/', methods=['POST'], view_func=create_meetsection)
 api.add_url_rule('/<meetsection_id>/', methods=['PUT'], view_func=edit_meetsection)
 api.add_url_rule('/<meetsection_id>/users/', methods=['POST'], view_func=add_user_to_meetsection)
 api.add_url_rule('/<meetsection_id>/users/', methods=['DELETE'], view_func=remove_user_from_meetsection)
