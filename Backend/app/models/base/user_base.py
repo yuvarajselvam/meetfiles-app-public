@@ -16,15 +16,17 @@ class UserBase(Entity):
                  primaryAccount: Union[Account.Type, str] = None,
                  accounts: list = None,
                  meetspaces: dict = None,
-                 timezone: str = None,
-                 datetimeFormat: str = None,
+                 timeZone: str = None,
+                 dateFormat: str = "DD-MM-YYYY",
+                 timeFormat: str = "HH:mm",
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.primaryAccount = primaryAccount
         self.accounts = accounts or []
         self.meetspaces = meetspaces or dict()
-        self.timezone = timezone
-        self.datetimeFormat = datetimeFormat
+        self.timeZone = timeZone
+        self.dateFormat = dateFormat
+        self.timeFormat = timeFormat
 
     # Properties
 
@@ -61,23 +63,31 @@ class UserBase(Entity):
         self._meetspaces = value
 
     @property
-    def timezone(self):
-        return self._timezone
+    def timeZone(self):
+        return self._time_zone
 
-    @timezone.setter
-    def timezone(self, value):
+    @timeZone.setter
+    def timeZone(self, value):
         if not value:
             return
         pytz.timezone(value)  # For validating timezone value
-        self._timezone = value
+        self._time_zone = value
 
     @property
-    def datetimeFormat(self):
-        return self._datetime_format
+    def dateFormat(self):
+        return self._date_format
 
-    @datetimeFormat.setter
-    def datetimeFormat(self, value):
-        self._datetime_format = value
+    @dateFormat.setter
+    def dateFormat(self, value):
+        self._date_format = value
+
+    @property
+    def timeFormat(self):
+        return self._time_format
+
+    @timeFormat.setter
+    def timeFormat(self, value):
+        self._time_format = value
 
     # Enums
 

@@ -282,6 +282,6 @@ class EventBase(Entity):
 
 # <editor-fold desc="Event Status Enum" default="collapsed">
 class VideoConferenceType(Enum):
-    ZOOM = "zoom"
-    GOOGLE_MEET = "google_meet"
+    ZOOM = "ZOOM"
+    GOOGLE_MEET = "GOOGLE_MEET"
 # </editor-fold>

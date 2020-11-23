@@ -1,3 +1,5 @@
+from flask_login import current_user
+
 from app.models.event import Event
 from app.models.base.meetsection_base import MeetsectionBase
 
@@ -8,15 +10,23 @@ class Meetsection(MeetsectionBase):
 
     def json(self, deep=False):
         result = super().json()
+        current_user_email = current_user.get_primary_email()
+        if result["createdBy"] == current_user_email:
+            result["type"] = "self"
+        elif result["createdBy"] == "system":
+            result["type"] = "default"
+        else:
+            result["type"] = "shared"
         if deep:
             result["events"] = []
             events = self.fetch_events()
             for event in events:
-                result["events"].append(Event(event).to_api_object())
+                result["events"].append(Event(**event).to_api_object())
         return result
 
-    def add_user(self, user_email):
-        self.members.append({"email": user_email, "role": self.Role.USER.value})
+    def add_user(self, user_email, owner=False):
+        role = self.Role.USER.value if not owner else self.Role.OWNER.value
+        self.members.append({"email": user_email, "role": role})
 
     def remove_user(self, user_email):
         self.members = [member for member in self.members if not member["email"] == user_email]
