@@ -5,6 +5,8 @@ import logging
 from flask_login import login_user
 from flask import Blueprint, session, redirect, request
 
+import requests
+from requests.auth import HTTPBasicAuth
 from requests_oauthlib import OAuth2Session
 from oauthlib.oauth2 import InvalidGrantError
 
@@ -135,6 +137,25 @@ def signin_with_microsoft_callback():
     return redirect(redirect_url)
 
 
+def zoom_callback():
+    zoom_client_id = "5SGQHhFtT_Kl9qrOohZHHA"
+    zoom_client_secret = "Qb06BHUpH84LCNr2pbwNq0YStk55CY04"
+    zoom_redirect_uri = base_url + '/api/v1/signin/zoom/callback/'
+    zoom_token_url = "https://zoom.us/oauth/token"
+    params = {
+        "grant_type": "authorization_code",
+        "code": request.args.get('code'),
+        "redirect_uri": "https://7a43c7f7a31d.ngrok.io/api/v1/signin/zoom/callback/"
+    }
+    auth = HTTPBasicAuth(zoom_client_id, zoom_client_secret)
+    try:
+        token = requests.post(zoom_token_url, params=params, auth=auth)
+    except InvalidGrantError:
+        return {"message": "Invalid Credentials."}, 401
+    print(token.json())
+    return redirect(app.config.get('APP_URL'))
+
+
 def _decode_id_token(id_token):
     id_token = id_token.split('.')[1] + "==="
     a = json.loads(base64.urlsafe_b64decode(id_token))
@@ -145,3 +166,4 @@ api.add_url_rule('/google/', view_func=signin_with_google)
 api.add_url_rule('/google/callback/', view_func=signin_with_google_callback)
 api.add_url_rule('/microsoft/', view_func=signin_with_microsoft)
 api.add_url_rule('/microsoft/callback/', view_func=signin_with_microsoft_callback)
+api.add_url_rule('/zoom/callback/', view_func=zoom_callback)

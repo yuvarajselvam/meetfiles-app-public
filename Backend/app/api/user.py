@@ -12,17 +12,26 @@ api = Blueprint('users', __name__, url_prefix='/api/v1/users')
 
 
 def get_user(user_id):
-    if not current_user.id == user_id:
-        return {"Error": "Permission denied"}, 401
+    if user_id == "me":
+        user_id = current_user.id
     user = User.find_one({"id": user_id})
-    return user.json(), 200
+    if not user:
+        return {"message": "User not found"}, 404
+    obj = user.json()
+    # TODO: Changes accounts naming
+    # As accounts can mean both meetfiles account and integration accounts
+    del obj["primaryAccount"]
+    obj["account"] = obj.pop("accounts")[0]
+    return obj, 200
 
 
 def edit_user(user_id):
-    if not current_user.id == user_id:
-        return {"Error": "Permission denied"}, 401
+    if user_id == "me":
+        user_id = current_user.id
     req_json = request.get_json()
     user = User.find_one({"id": user_id})
+    if not user:
+        return {"message": "User not found"}, 404
     for attribute in req_json:
         if hasattr(user, attribute):
             setattr(user, attribute, req_json[attribute])

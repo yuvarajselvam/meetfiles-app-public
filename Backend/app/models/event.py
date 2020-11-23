@@ -179,7 +179,7 @@ class Event(EventBase):
     def to_api_object(self):
         ev = {
             "id": self.id,
-            "name": self.title,
+            "title": self.title,
             "description": self.description,
             "attendees": [{"displayName": attendee["email"]} for attendee in self.attendees]
         }

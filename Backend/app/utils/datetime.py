@@ -1,4 +1,6 @@
 import pytz
+
+from datetime import datetime
 from dateutil import parser, rrule
 
 weekday_map = {"monday": 0, "tuesday": 1, "wednesday": 2,
@@ -7,6 +9,8 @@ position_map = {"first": 1, "second": 2, "third": 3, "fourth": 4, "last": -1}
 
 
 def get_datetime(value):
+    if isinstance(value, datetime):
+        return value
     if value:
         tz = None
         if isinstance(value, (tuple, list)):
