@@ -12,6 +12,7 @@ api = Blueprint('events', __name__, url_prefix='/api/v1/events')
 
 def create_event():
     req_json = request.get_json()
+    logger.debug(req_json)
     user = current_user
     if not user:
         return {"message": f"User `{req_json['email']}` does not exist"}, 400
@@ -39,8 +40,9 @@ def create_event():
 
 def get_event(event_id):
     event = Event.find_one(query={"id": event_id})
-    status_code = 200 if not event else 404
-    return event.to_api_object(), status_code
+    if not event:
+        return {"message": "Meetsection not found for user"}, 404
+    return event.to_api_object(), 200
 
 
 def list_events_by_date_range():

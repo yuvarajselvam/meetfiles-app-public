@@ -62,7 +62,9 @@ class Entity(EntityBase):
         return result
 
     @classmethod
-    def find_one(cls, query=None, session=None):
+    def find_one(cls, query=None, session=None, deleted=False):
+        if not deleted:
+            query["deletedAt"] = {"$exists": False}
         document = db.get_conn()[cls._collection].find_one(query, session=session)
         if not document:
             return
@@ -70,7 +72,7 @@ class Entity(EntityBase):
 
     @classmethod
     def find(cls, query=None, session=None):
-        documents = db.get_conn()[cls._collection].find_one(query, session=session)
+        documents = db.get_conn()[cls._collection].find(query, session=session)
         if not documents:
             return []
         return list(documents)

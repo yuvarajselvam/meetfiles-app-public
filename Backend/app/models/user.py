@@ -48,7 +48,6 @@ class User(UserBase):
             self.save()
 
     def sync_calendars(self, initial=False):
-        print(self.accounts)
         if initial:
             from app.models.meetsection import Meetsection
             primary_account = self.get_primary_account()

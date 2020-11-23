@@ -108,11 +108,9 @@ class Calendar(CalendarBase):
     def sync_events(self):
         if self.provider == "google":
             events = self.fetch_google_events()
-            print(events)
             print(Event.sync_google_events(events, self._account))
         elif self.provider == "microsoft":
             events = self.fetch_microsoft_events()
-            print(events)
             print(Event.sync_microsoft_events(events, self._account))
         self.lastSyncedAt = datetime.utcnow()
         self.save()
