@@ -17,7 +17,8 @@ class NotificationBase(Entity):
         self.body = body
         self.isRead = isRead
         self.user = user
-        
+        self._user_obj = None
+
     @property
     def title(self):
         return self._title

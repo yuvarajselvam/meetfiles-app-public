@@ -16,6 +16,7 @@ class UserBase(Entity):
                  primaryAccount: Union[Account.Type, str] = None,
                  accounts: list = None,
                  meetspaces: dict = None,
+                 notifTokens: list = None,
                  timeZone: str = None,
                  dateFormat: str = "DD-MM-YYYY",
                  timeFormat: str = "HH:mm",
@@ -24,6 +25,7 @@ class UserBase(Entity):
         self.primaryAccount = primaryAccount
         self.accounts = accounts or []
         self.meetspaces = meetspaces or dict()
+        self.notifTokens = notifTokens or list()
         self.timeZone = timeZone
         self.dateFormat = dateFormat
         self.timeFormat = timeFormat
@@ -88,6 +90,14 @@ class UserBase(Entity):
     @timeFormat.setter
     def timeFormat(self, value):
         self._time_format = value
+
+    @property
+    def notifTokens(self):
+        return list(set(self._notif_tokens))
+
+    @notifTokens.setter
+    def notifTokens(self, value):
+        self._notif_tokens = value
 
     # Enums
 

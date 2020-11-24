@@ -13,9 +13,14 @@ session = Session()
 paranoid = Paranoid()
 login_manager = LoginManager()
 mailer = MailingService()
-notificationService = NotificationService()
+notification_service = NotificationService()
 
 
 def init_app(app):
-    for extension in (logger, db, session, login_manager, mailer):
+    for extension in (logger,
+                      db,
+                      session,
+                      login_manager,
+                      mailer,
+                      notification_service):
         extension.init_app(app)
