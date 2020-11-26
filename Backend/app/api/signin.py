@@ -76,6 +76,7 @@ def signin_with_google_callback():
         user.add_account(google_object, user.primaryAccount)
     user.authenticate()
     login_user(user)
+    print("Logging in....", session['_user_id'], session['_id'])
     user.sync_calendars(initial=initial)
     if user.meetspaces:
         path = '/meetspaces'
@@ -140,7 +141,6 @@ def signin_with_microsoft_callback():
 def zoom_callback():
     zoom_client_id = "5SGQHhFtT_Kl9qrOohZHHA"
     zoom_client_secret = "Qb06BHUpH84LCNr2pbwNq0YStk55CY04"
-    zoom_redirect_uri = base_url + '/api/v1/signin/zoom/callback/'
     zoom_token_url = "https://zoom.us/oauth/token"
     params = {
         "grant_type": "authorization_code",

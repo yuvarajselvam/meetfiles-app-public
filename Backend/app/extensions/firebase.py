@@ -1,4 +1,4 @@
-from firebase_admin import initialize_app, credentials as cred, messaging, db
+from firebase_admin import initialize_app, credentials as cred, db
 
 
 class FirebaseService:
@@ -19,14 +19,8 @@ class FirebaseService:
 
     @staticmethod
     def notify(token, data, title, body):
-        notification_obj = messaging.Notification(title=title, body=body)
-        message = messaging.Message(data=data, notification=notification_obj, token=token)
-        return messaging.send(message)
+        pass
 
     @staticmethod
     def notify_all(tokens, data, title, body):
-        notif_obj = messaging.Notification(title=title, body=body)
-        messages = []
-        for token in tokens:
-            messages.append(messaging.Message(data=data, notification=notif_obj, token=token))
-        return messaging.send_all(messages)
+        pass

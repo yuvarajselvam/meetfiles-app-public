@@ -13,3 +13,4 @@ ngrok.exe
 
 # Mac OS ignores
 .DS_Store
+/app/resources/
