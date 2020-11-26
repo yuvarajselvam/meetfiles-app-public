@@ -5,7 +5,7 @@ from flask_paranoid import Paranoid
 from .db import MongoDB
 from .logging import Logger
 from .mailing import MailingService
-from .notifications import NotificationService
+from .firebase import FirebaseService
 
 db = MongoDB()
 logger = Logger()
@@ -13,7 +13,7 @@ session = Session()
 paranoid = Paranoid()
 login_manager = LoginManager()
 mailer = MailingService()
-notification_service = NotificationService()
+firebase_service = FirebaseService()
 
 
 def init_app(app):
@@ -22,5 +22,5 @@ def init_app(app):
                       session,
                       login_manager,
                       mailer,
-                      notification_service):
+                      firebase_service):
         extension.init_app(app)
