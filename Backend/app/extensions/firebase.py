@@ -1,7 +1,7 @@
-from firebase_admin import initialize_app, credentials as cred, messaging
+from firebase_admin import initialize_app, credentials as cred, messaging, db
 
 
-class NotificationService:
+class FirebaseService:
     service = None
 
     def __init__(self, app=None):
@@ -14,13 +14,17 @@ class NotificationService:
         self.service = initialize_app(credential=cred.Certificate(path))
 
     @staticmethod
-    def send(token, data, title, body):
+    def db_insert(path, value):
+        db.reference(path).set(value)
+
+    @staticmethod
+    def notify(token, data, title, body):
         notification_obj = messaging.Notification(title=title, body=body)
         message = messaging.Message(data=data, notification=notification_obj, token=token)
         return messaging.send(message)
 
     @staticmethod
-    def send_all(tokens, data, title, body):
+    def notify_all(tokens, data, title, body):
         notif_obj = messaging.Notification(title=title, body=body)
         messages = []
         for token in tokens:

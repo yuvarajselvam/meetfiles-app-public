@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pymongo.operations import InsertOne
 
-from app.extensions import notification_service
+from app.extensions import firebase_service
 from app.models.base.notification_base import NotificationBase
 
 
@@ -17,7 +17,7 @@ class Notification(NotificationBase):
         if save:
             self.save()
         tokens = self._user_obj.notifTokens
-        notification_service.send_all(tokens, {}, self.title, self.body)
+        firebase_service.notify_all(tokens, {}, self.title, self.body)
 
     @classmethod
     def push_all(cls, title, body, users):
@@ -32,5 +32,5 @@ class Notification(NotificationBase):
             notif.updatedAt = utc_now
             operations.append(InsertOne(notif.json()))
         cls.bulk_write(operations)
-        notification_service.send_all(tokens, {}, title, body)
+        firebase_service.notify_all(tokens, {}, title, body)
 
