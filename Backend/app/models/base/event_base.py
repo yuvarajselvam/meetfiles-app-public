@@ -47,13 +47,13 @@ class EventBase(Entity):
         self.end = end
         self.originalStart = originalStart
         self.organizer = organizer
-        self.attendees = attendees or dict()
+        self.attendees = attendees or list()
         self.followUp = followUp
         self.isAllDay = isAllDay
         self.location = location
         self.description = description
         self.conferenceData = conferenceData or dict()
-        self.attachments = attachments or dict()
+        self.attachments = attachments or list()
         self.status = status
         self.isRecurring = isRecurring
         self.recurrence = recurrence
