@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 
 from app import app
 from app.models.user import User
-from app.extensions import mailer
+from app.extensions import mailer, firebase_service
 from app.utils.precheck import precheck
 from app.models.meetsection import Meetsection
 
@@ -34,16 +34,21 @@ def create_meetsection():
     }
     meetsection = Meetsection(**meetsection_object)
     meetsection.add_user(current_user_email, owner=True)
+    users = [current_user.id]
     for email in request_json.get('members', []):
         if not current_user_email == email:
-            if not User.find_one({"accounts.email": email}):
+            user = User.find_one({"accounts.email": email})
+            if not user:
                 send_invite(email, current_user_email)
+            else:
+                users.append(user.id)
             meetsection.add_user(email)
     try:
         meetsection.save()
     except (ValueError, AttributeError) as e:
         return {"message": str(e)}, 400
-
+    firebase_service.notify_all(users, title="Meetsection created",
+                                body=f"Meetsection {request_json.get('name')} successfully created")
     return meetsection.json(), 201
 
 

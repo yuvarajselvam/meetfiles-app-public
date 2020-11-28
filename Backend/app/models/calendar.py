@@ -70,12 +70,10 @@ class Calendar(CalendarBase):
         google_event = event.to_google_event()
         if video_conf_type == VideoConferenceType.GOOGLE_MEET.value:
             google_event["conferenceData"] = _get_conf_data_req_obj()
-        print(google_event)
         try:
             ev = service.events() \
                 .insert(calendarId='primary', body=google_event, conferenceDataVersion=1) \
                 .execute()
-            print(ev)
             if video_conf_type == VideoConferenceType.GOOGLE_MEET.value:
                 ev = _wait_till_conf_create(ev)
                 status = ev.get("conferenceData", {}).get("createRequest", {}).get("status", None)
@@ -90,8 +88,7 @@ class Calendar(CalendarBase):
                         raise NotImplementedError
             event.from_google_event(ev)
         except GoogleHttpError as e:
-            print(e.resp, e.content, e.error_details)
-            raise
+            logger.error(e.resp, e.content, e.error_details)
 
     def add_microsoft_event(self, event, video_conf_type=None):
         service = self.get_service()
@@ -101,8 +98,39 @@ class Calendar(CalendarBase):
         try:
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            print(str(e))
-            raise
+            logger.error(str(e))
+        event.from_microsoft_event(result)
+
+    def edit_event(self, event, keys=None):
+        if self.provider == "google":
+            self.edit_google_event(event, keys)
+        elif self.provider == "microsoft":
+            self.edit_microsoft_event(event, keys)
+        self.save()
+
+    def edit_google_event(self, event, keys=None):
+        service = self.get_service()
+        google_event = event.to_google_event(keys)
+        ev = None
+        try:
+            ev = service.events() \
+                .patch(calendarId='primary', eventId=event.providerId,
+                       body=google_event, conferenceDataVersion=1) \
+                .execute()
+        except GoogleHttpError as e:
+            logger.error(e.resp, e.content, e.error_details)
+        if ev:
+            event.from_google_event(ev)
+
+    def edit_microsoft_event(self, event, keys=None):
+        service = self.get_service()
+        microsoft_event = event.to_microsoft_event()
+        url = f"https://graph.microsoft.com/v1.0/me/events/{event.providerId}"
+        result = service.patch(url, data=microsoft_event)
+        try:
+            result.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            logger.error(str(e))
         event.from_microsoft_event(result)
 
     def sync_events(self):
@@ -140,6 +168,7 @@ class Calendar(CalendarBase):
                 sync_token = result.get('nextSyncToken')
                 break
         self.syncToken = sync_token
+        print(events)
         return events
 
     def fetch_microsoft_events(self):

@@ -19,7 +19,7 @@ def create_event():
     account = user.get_account_by_email(req_json["email"])
     calendar = account.get_calendar()
     req_json.pop("id", None)
-    req_json["user"] = req_json.pop("email", None)
+    req_json["user"] = user.id
     req_json["meetsection"] = req_json.pop("meetSection", None)
     req_json["attendees"] = [{"email": attendee} for attendee in req_json['attendees']]
     followup_event_id = req_json.pop("followUpEventId", None)
@@ -39,10 +39,28 @@ def create_event():
 
 
 def get_event(event_id):
-    event = Event.find_one(query={"id": event_id})
+    query = {"id": event_id, "user": current_user.id}
+    event = Event.find_one(query=query)
     if not event:
-        return {"message": "Meetsection not found for user"}, 404
+        return {"message": "Event not found for user"}, 404
     return event.to_api_object(), 200
+
+
+def edit_event(event_id):
+    req_json = request.get_json()
+    print(req_json)
+    account = current_user.get_primary_account()
+    query = {"id": event_id, "user": current_user.id}
+    event = Event.find_one(query=query)
+    if not event:
+        return {"message": "Event not found for user"}, 404
+    if account.email != event.organizer:
+        return {"message": "Permission denied"}, 403
+    event.update(req_json)
+    calendar = account.get_calendar()
+    calendar.edit_event(event, keys=req_json.keys())
+    rv = event.json()
+    return jsonify(rv), 200
 
 
 def list_events_by_date_range():
@@ -63,4 +81,5 @@ def is_conflict():
 api.add_url_rule('/', view_func=create_event, methods=['POST'])
 api.add_url_rule('/', view_func=list_events_by_date_range)
 api.add_url_rule('/<event_id>/', view_func=get_event)
+api.add_url_rule('/<event_id>/', view_func=edit_event, methods=['PUT'])
 api.add_url_rule('/conflict/', view_func=is_conflict)

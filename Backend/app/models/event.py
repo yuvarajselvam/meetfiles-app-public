@@ -21,7 +21,8 @@ class Event(EventBase):
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
-                operation = UpdateOne({"providerId": event.providerId}, {"$set": event.json()}, upsert=True)
+                operation = UpdateOne({"providerId": event.providerId, "user": account.get_user_id()},
+                                      {"$set": event.json()}, upsert=True)
                 bulk_write_data[event._collection].append(operation)
             events_result = Event.bulk_write(bulk_write_data['events'])
             ree_result = REE.bulk_write(bulk_write_data['recurring_exception_events'])
@@ -30,7 +31,6 @@ class Event(EventBase):
     def from_google_event(self, ev):
         utc_now = datetime.datetime.utcnow()
         attendees = ev.get("attendees", [])
-        self.attendees = []
         for attendee in attendees:
             is_resource = attendee.get("resource")
             if is_resource:
@@ -76,15 +76,20 @@ class Event(EventBase):
         self.createdAt = utc_now
         self.updatedAt = utc_now
 
-    def to_google_event(self):
+    def to_google_event(self, keys=None):
         google_object = {
             "summary": self.title,
             "start": {"date" if self.isAllDay else "dateTime": self.start.isoformat()},
             "end": {"date" if self.isAllDay else "dateTime": self.end.isoformat()},
-            "attendees": self.attendees,
             "location": self.location,
             "description": self.description
         }
+        attendees = []
+        for attendee in self.attendees:
+            attendees.append({"email": attendee["email"]})
+        google_object["attendees"] = attendees if attendees else None
+        if keys:
+            [google_object.pop(k, None) for k in keys]
         return google_object
 
     @classmethod
@@ -198,6 +203,15 @@ class Event(EventBase):
         query = {"start": {"$gte": get_datetime(start), "$lt": get_datetime(end)}}
         events = cls.find(query)
         return [cls(ev).to_api_object() for ev in events]
+
+    def update(self, update_json, save=False):
+        for attribute in update_json:
+            if hasattr(self, attribute):
+                setattr(self, attribute, update_json[attribute])
+            else:
+                raise AttributeError(f"Invalid property `{attribute}` for Event")
+        if save:
+            self.save()
 
 
 class RecurringExceptionEvent(Event):
