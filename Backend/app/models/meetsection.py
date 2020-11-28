@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask_login import current_user
 
 from app.models.event import Event
@@ -18,10 +19,19 @@ class Meetsection(MeetsectionBase):
         else:
             result["type"] = "shared"
         if deep:
-            result["events"] = []
+            result["events"] = {"past": {"items": []},
+                                "today": {"items": []},
+                                "upcoming": {"items": []}}
             events = self.fetch_events()
             for event in events:
-                result["events"].append(Event(**event).to_api_object())
+                e = Event(**event)
+                if e.start < datetime.utcnow():
+                    category = "past"
+                elif e.start.date() == datetime.utcnow().date():
+                    category = "today"
+                else:
+                    category = "upcoming"
+                result["events"][category]["items"].append(e.to_api_object())
         return result
 
     def add_user(self, user_email, owner=False):

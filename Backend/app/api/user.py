@@ -1,3 +1,4 @@
+import json
 import logging
 
 from flask import Blueprint, request, redirect
@@ -14,14 +15,18 @@ api = Blueprint('users', __name__, url_prefix='/api/v1/users')
 def get_user(user_id):
     if user_id == "me":
         user_id = current_user.id
+        with open(app.config.get('FIREBASE_OPTS_PATH')) as f:
+            firebase = json.load(f)
     user = User.find_one({"id": user_id})
     if not user:
         return {"message": "User not found"}, 404
     obj = user.json()
-    # TODO: Changes accounts naming
+    # TODO: Change accounts naming
     # As accounts can mean both meetfiles account and integration accounts
     del obj["primaryAccount"]
     obj["account"] = obj.pop("accounts")[0]
+    if firebase:
+        obj["firebase"] = firebase
     return obj, 200
 
 

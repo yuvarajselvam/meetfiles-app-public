@@ -10,14 +10,19 @@ position_map = {"first": 1, "second": 2, "third": 3, "fourth": 4, "last": -1}
 
 def get_datetime(value):
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = pytz.utc.localize(value)
         return value
     if value:
         tz = None
         if isinstance(value, (tuple, list)):
             value, tz = value
         value = parser.parse(value)
-        if tz:
-            value = value.replace(tzinfo=pytz.timezone(tz))
+        if tz and value.tzinfo is None:
+            tz = pytz.timezone(tz)
+            value = tz.localize(value)
+        if value.tzinfo is None:
+            value = pytz.utc.localize(value)
     return value
 
 
@@ -70,3 +75,10 @@ def get_rrule_from_pattern(rp):
         raise ValueError('Invalid pattern type')
     return [rule for rule in str(rr).split('\n') if not rule.startswith('DTSTART')]
 
+
+def get_start_times(recurrence, start):
+    recurrence = list(map(lambda x:
+                          x.replace('VALUE=DATE:', 'VALUE=DATE-TIME:')
+                          if x.startswith('RDATE') else x, recurrence))
+    start = get_datetime(start).astimezone(pytz.utc).replace(tzinfo=None)
+    return list(rrule.rrulestr('\n'.join(recurrence), dtstart=start))
