@@ -12,7 +12,6 @@ api = Blueprint('events', __name__, url_prefix='/api/v1/events')
 
 def create_event():
     req_json = request.get_json()
-    logger.debug(req_json)
     user = current_user
     if not user:
         return {"message": f"User `{req_json['email']}` does not exist"}, 400
@@ -48,7 +47,6 @@ def get_event(event_id):
 
 def edit_event(event_id):
     req_json = request.get_json()
-    print(req_json)
     account = current_user.get_primary_account()
     query = {"id": event_id, "user": current_user.id}
     event = Event.find_one(query=query)
@@ -56,7 +54,11 @@ def edit_event(event_id):
         return {"message": "Event not found for user"}, 404
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
-    event.update(req_json)
+    for attribute in req_json:
+        if hasattr(event, attribute):
+            setattr(event, attribute, req_json[attribute])
+        else:
+            raise AttributeError(f"Invalid property `{attribute}` for Event")
     calendar = account.get_calendar()
     calendar.edit_event(event, keys=req_json.keys())
     rv = event.json()

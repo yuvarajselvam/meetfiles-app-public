@@ -177,41 +177,44 @@ class Event(EventBase):
             "start": {"dateTime": self.start.isoformat()},
             "end": {"dateTime": self.end.isoformat()},
             "location": {"displayName": self.location},
-            "attendees": [attendee["email"] for attendee in self.attendees]
         }
+        attendees = []
+        for attendee in self.attendees:
+            attendees.append({"email": attendee["email"]})
+        microsoft_object["attendees"] = attendees if attendees else None
         return microsoft_object
 
     def to_api_object(self):
+        from app.models.user import User
         ev = {
             "id": self.id,
             "title": self.title,
             "description": self.description,
-            "attendees": [{"displayName": attendee["email"]} for attendee in self.attendees]
         }
-
+        attendees = []
+        for _attendee in self.attendees:
+            email = _attendee["email"]
+            attendee = {"email": email, "type": "organizer" if email == self.organizer else None}
+            _user = User.find_one({"accounts.email": email})
+            if _user:
+                attendee["displayName"] = _user.get_primary_account().name
+            attendees.append(attendee)
+        ev["attendees"] = attendees if attendees else None
         start = self.start
         if start:
-            ev["start"] = {"date": start.strftime("%Y-%m-%d"), "time": start.strftime("%I:%M %p")}
+            ev["start"] = {"date": start.strftime("%Y-%m-%d"),
+                           "time": start.strftime("%I:%M %p")}
         end = self.end
         if end:
-            ev["end"] = {"date": end.strftime("%Y-%m-%d"), "time": end.strftime("%I:%M %p")}
-
+            ev["end"] = {"date": end.strftime("%Y-%m-%d"),
+                         "time": end.strftime("%I:%M %p")}
         return ev
 
     @classmethod
     def fetch_by_date_range(cls, start, end):
         query = {"start": {"$gte": get_datetime(start), "$lt": get_datetime(end)}}
         events = cls.find(query)
-        return [cls(ev).to_api_object() for ev in events]
-
-    def update(self, update_json, save=False):
-        for attribute in update_json:
-            if hasattr(self, attribute):
-                setattr(self, attribute, update_json[attribute])
-            else:
-                raise AttributeError(f"Invalid property `{attribute}` for Event")
-        if save:
-            self.save()
+        return [cls(**ev).to_api_object() for ev in events]
 
 
 class RecurringExceptionEvent(Event):

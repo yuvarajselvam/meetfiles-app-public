@@ -24,7 +24,6 @@ def send_invite(to_address, invitor):
 @precheck(required_fields=['name'])
 def create_meetsection():
     request_json = request.get_json()
-    logger.debug(request_json)
     current_user_json = current_user.get_primary_account().json()
     current_user_email = current_user_json["email"]
     meetsection_object = {
