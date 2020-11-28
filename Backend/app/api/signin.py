@@ -56,7 +56,6 @@ def signin_with_google_callback():
     except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
     user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
-    logger.debug(f"User logging in - {user_info['email']}")
     user = User.find_one({"accounts.email": user_info['email'], "accounts.type": "google"})
     path = '/get-started/create'
     initial = False
@@ -76,7 +75,6 @@ def signin_with_google_callback():
         user.add_account(google_object, user.primaryAccount)
     user.authenticate()
     login_user(user)
-    print("Logging in....", session['_user_id'], session['_id'])
     user.sync_calendars(initial=initial)
     if user.meetspaces:
         path = '/meetspaces'
@@ -110,7 +108,6 @@ def signin_with_microsoft_callback():
         return {"message": "No email address is associated with this account."}
 
     user_info = microsoft.get('https://graph.microsoft.com/v1.0/me').json()
-    logger.debug(f"User logging in - {email}")
     user = User.find_one({"accounts.email": email, "accounts.type": "microsoft"})
     path = '/get-started/create'
     initial = False
