@@ -47,7 +47,6 @@ class MailingService:
         message['to'] = to
         message['from'] = self.sender
         message['subject'] = subject
-        logger.debug(f"Email message: {message_text}")
         return {'raw': base64.urlsafe_b64encode(message.as_string().encode()).decode()}
 
     def send_message(self, to_address, subject, message_text):
