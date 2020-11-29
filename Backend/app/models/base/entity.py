@@ -58,7 +58,6 @@ class Entity(EntityBase):
             with db.get_session() as session:
                 with session.start_transaction():
                     result = collection.bulk_write(operations, ordered=False, session=session)
-            print("Success:", result.bulk_api_result)
         return result
 
     @classmethod

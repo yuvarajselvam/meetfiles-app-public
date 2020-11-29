@@ -48,7 +48,7 @@ def create_meetsection():
         return {"message": str(e)}, 400
     firebase_service.notify_all(users, title="Meetsection created",
                                 body=f"Meetsection {request_json.get('name')} successfully created")
-    return meetsection.json(), 201
+    return meetsection.to_simple_object(), 201
 
 
 def list_meetsections():
@@ -57,7 +57,7 @@ def list_meetsections():
     result = []
     for meetsection in meetsections:
         meetsection.pop('_id')
-        result.append(Meetsection(**meetsection).json(deep=True))
+        result.append(Meetsection(**meetsection).to_full_object())
     return jsonify(result), 200
 
 
@@ -66,7 +66,7 @@ def get_meetsection(meetsection_id):
     meetsection = Meetsection.find_one(query=query)
     if not meetsection:
         return {"message": "Meetsection not found for user"}, 404
-    return meetsection.json(deep=True), 200
+    return meetsection.to_full_object(), 200
 
 
 def edit_meetsection(meetsection_id):
@@ -81,7 +81,7 @@ def edit_meetsection(meetsection_id):
         else:
             return {"message": f"Invalid property `{attribute}` for Meetsection"}, 400
     meetsection.save()
-    return meetsection.json(), 200
+    return meetsection.to_simple_object(), 200
 
 
 def add_user_to_meetsection(meetsection_id):
@@ -96,7 +96,7 @@ def add_user_to_meetsection(meetsection_id):
             send_invite(email, current_user_email)
         meetsection.add_user(email)
     meetsection.save()
-    return meetsection.json(), 200
+    return meetsection.to_simple_object(), 200
 
 
 def remove_user_from_meetsection(meetsection_id):
@@ -107,7 +107,7 @@ def remove_user_from_meetsection(meetsection_id):
         return {"message": "Meetsection not found for user"}, 404
     meetsection.remove_user(user_email)
     meetsection.save()
-    return meetsection.json(), 200
+    return meetsection.to_simple_object(), 200
 
 
 def is_meetsection_name_unique():

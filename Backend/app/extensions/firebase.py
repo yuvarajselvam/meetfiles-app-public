@@ -21,6 +21,10 @@ class FirebaseService:
         db.reference(path).set(value)
 
     @staticmethod
+    def db_update(value):
+        db.reference().update(value)
+
+    @staticmethod
     def notify(user_id, title, body):
         notif_ref = db.reference(f'users/{user_id}/notifications')
         notif_ref.push({"title": title, "body": body})

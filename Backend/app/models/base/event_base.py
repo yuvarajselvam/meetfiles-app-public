@@ -4,6 +4,7 @@ from enum import Enum
 
 from app.utils import datetime as dt_util
 from app.models.base.entity import Entity
+from app.utils.datetime import get_start_times
 
 
 class EventBase(Entity):
@@ -29,7 +30,9 @@ class EventBase(Entity):
                  attachments: dict = None,
                  status: str = None,
                  isRecurring: bool = None,
-                 recurrence: str = None,
+                 recurrence: list = None,
+                 recurrenceText: str = None,
+                 recurrenceEnd: datetime.datetime = None,
                  transparency: str = None,
                  webLink: str = None,
                  provider: str = None,
@@ -56,7 +59,9 @@ class EventBase(Entity):
         self.attachments = attachments or list()
         self.status = status
         self.isRecurring = isRecurring
-        self.recurrence = recurrence
+        self.recurrenceEnd = recurrenceEnd
+        self.recurrence = recurrence or list()
+        self.recurrenceText = recurrenceText
         self.transparency = transparency
         self.webLink = webLink
         self.provider = provider
@@ -196,6 +201,12 @@ class EventBase(Entity):
     @recurrence.setter
     def recurrence(self, value):
         self._recurrence = value
+        if (not self._recurrence_end) and self._recurrence:
+            for rule in self.recurrence:
+                if rule.startswith("RRULE") and \
+                        (("COUNT" in rule) or ("UNTIL" in rule)):
+                    st = get_start_times(self._recurrence, start=self.start)
+                    self.recurrenceEnd = st[-1]
 
     @property
     def isRecurring(self):
@@ -204,6 +215,22 @@ class EventBase(Entity):
     @isRecurring.setter
     def isRecurring(self, value):
         self._is_recurring = value
+
+    @property
+    def recurrenceText(self):
+        return self._recurrence_text
+
+    @recurrenceText.setter
+    def recurrenceText(self, value):
+        self._recurrence_text = value
+
+    @property
+    def recurrenceEnd(self):
+        return self._recurrence_end
+
+    @recurrenceEnd.setter
+    def recurrenceEnd(self, value):
+        self._recurrence_end = dt_util.get_datetime(value)
 
     @property
     def transparency(self):
