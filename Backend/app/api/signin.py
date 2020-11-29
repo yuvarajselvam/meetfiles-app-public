@@ -149,7 +149,6 @@ def zoom_callback():
         token = requests.post(zoom_token_url, params=params, auth=auth)
     except InvalidGrantError:
         return {"message": "Invalid Credentials."}, 401
-    print(token.json())
     return redirect(app.config.get('APP_URL'))
 
 

@@ -1,7 +1,7 @@
 import pytz
 
-from datetime import datetime
 from dateutil import parser, rrule
+from datetime import datetime, timedelta
 
 weekday_map = {"monday": 0, "tuesday": 1, "wednesday": 2,
                "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
@@ -76,9 +76,22 @@ def get_rrule_from_pattern(rp):
     return [rule for rule in str(rr).split('\n') if not rule.startswith('DTSTART')]
 
 
-def get_start_times(recurrence, start):
-    recurrence = list(map(lambda x:
-                          x.replace('VALUE=DATE:', 'VALUE=DATE-TIME:')
-                          if x.startswith('RDATE') else x, recurrence))
+def get_rruleset(recurrence, start):
+    _recurrence = []
+    if start.tzinfo:
+        start = start.astimezone(pytz.utc).replace(tzinfo=None)
+    for rule in recurrence:
+        if rule.startswith('RRULE') and 'UNTIL' in rule:
+            _recurrence.append(rule.replace('Z', ''))
+        elif rule.startswith('RDATE'):
+            _recurrence.append(rule.replace('VALUE=DATE:', 'VALUE=DATE-TIME:'))
+        else:
+            _recurrence.append(rule)
+    return rrule.rrulestr('\n'.join(_recurrence), dtstart=start)
+
+
+def get_start_times(recurrence, start, end=None):
+    if end is None:
+        end = datetime.utcnow() + timedelta(days=90)
     start = get_datetime(start).astimezone(pytz.utc).replace(tzinfo=None)
-    return list(rrule.rrulestr('\n'.join(recurrence), dtstart=start))
+    return get_rruleset(recurrence, start).between(start, end, inc=True)

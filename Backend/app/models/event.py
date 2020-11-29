@@ -3,30 +3,36 @@ import datetime
 from pymongo.operations import UpdateOne
 
 from app.models.base.event_base import EventBase
-from app.utils.datetime import get_rrule_from_pattern, get_datetime
+from app.utils.datetime import get_start_times, get_datetime, get_rrule_from_pattern
 
 
 class Event(EventBase):
     @classmethod
     def sync_google_events(cls, events, account):
-        user = account.get_user_id()
         from app.models.meetsection import Meetsection
-        meetsection = Meetsection.get_default(account.email)
+        user = account.get_user_id()
+        default_meetsection = Meetsection.get_default(account.email).id
+        provider_ids = [ev["id"] for ev in events]
+        _events = cls.find({"user": user, "providerId": {"$in": provider_ids}})
+        changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
+                e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                meetsection = e_obj[0]["meetsection"] if e_obj else default_meetsection
+                changed_meetsections.add(meetsection)
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetsection": meetsection.id, "user": user}
+                params = {"meetsection": meetsection, "user": user}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
                 operation = UpdateOne({"providerId": event.providerId, "user": account.get_user_id()},
                                       {"$set": event.json()}, upsert=True)
                 bulk_write_data[event._collection].append(operation)
-            events_result = Event.bulk_write(bulk_write_data['events'])
-            ree_result = REE.bulk_write(bulk_write_data['recurring_exception_events'])
-            return events_result, ree_result
+            Event.bulk_write(bulk_write_data['events'])
+            REE.bulk_write(bulk_write_data['recurring_exception_events'])
+            return changed_meetsections
 
     def from_google_event(self, ev):
         utc_now = datetime.datetime.utcnow()
@@ -94,28 +100,35 @@ class Event(EventBase):
 
     @classmethod
     def sync_microsoft_events(cls, events, account):
+        from app.models.meetsection import Meetsection
         user = account.get_user_id()
         service = account.get_service()
-        from app.models.meetsection import Meetsection
-        meetsection = Meetsection.get_default(account.email)
+        default_meetsection = Meetsection.get_default(account.email).id
+        provider_ids = [ev["id"] for ev in events]
+        _events = cls.find({"user": user, "providerId": {"$in": provider_ids}})
+        changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
                 if not ev.get("type") == "occurrence":
+                    e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                    meetsection = e_obj[0]["meetsection"] if e_obj else default_meetsection
+                    changed_meetsections.add(meetsection)
                     recurring_event_id = ev.get("seriesMasterId")
-                    params = {"meetsection": meetsection.id, "user": user}
+                    params = {"meetsection": meetsection, "user": user}
                     event = Event(**params) if not recurring_event_id else REE(**params)
                     event.recurringEventProviderId = recurring_event_id
                     if ev.get("@removed"):
                         event.isDeleted = True
                     else:
                         event.from_microsoft_event(ev, service)
-                    operation = UpdateOne({"providerId": event.providerId, "user": user}, {"$set": event.json()}, upsert=True)
+                    operation = UpdateOne({"providerId": event.providerId, "user": user},
+                                          {"$set": event.json()}, upsert=True)
                     bulk_write_data[event._collection].append(operation)
-            events_result = Event.bulk_write(bulk_write_data['events'])
-            ree_result = REE.bulk_write(bulk_write_data['recurring_exception_events'])
-            return events_result, ree_result
+            Event.bulk_write(bulk_write_data['events'])
+            REE.bulk_write(bulk_write_data['recurring_exception_events'])
+            return changed_meetsections
 
     def from_microsoft_event(self, ev, service):
         utc_now = datetime.datetime.utcnow()
@@ -184,37 +197,80 @@ class Event(EventBase):
         microsoft_object["attendees"] = attendees if attendees else None
         return microsoft_object
 
-    def to_api_object(self):
-        from app.models.user import User
+    def expand(self, past=False):
+        if not self.isRecurring:
+            raise ValueError("Tried to expand non recurring event")
+
+        start = self.start if past else datetime.datetime.utcnow()
+        start_times = get_start_times(self.recurrence, start=start)
+        instances = []
+        query = {"recurringEventProviderId": self.providerId, "user": self.user}
+        exceptions = RecurringExceptionEvent.find(query)
+        clone = self.to_simple_object()
+        duration = self.end - self.start
+        for st in start_times:
+            instance = self._get_instance_from_event(st, duration, exceptions, clone)
+            instances.append(instance)
+        return instances
+
+    def _get_instance_from_event(self, start, duration, exceptions, clone):
+        REE = RecurringExceptionEvent
+        ree = REE(recurringEventProviderId=self.providerId, originalStart=self.start)
+        exception = list(filter(lambda o: o["id"] == ree.generate_id(), exceptions))
+        if exception:
+            instance = REE(**exception[0]).to_simple_object()
+        else:
+            instance = clone.copy()
+            instance["start"] = start,
+            instance["end"] = start + duration
+        return instance
+
+    def next_start_end_in_series(self):
+        utc_now = datetime.datetime.utcnow()
+        start_times = get_start_times(self.recurrence, start=utc_now)
+        duration = self.end - self.start
+        if start_times:
+            return start_times[0], start_times[0] + duration
+        else:
+            return None, None
+
+    def to_simple_object(self):
         ev = {
             "id": self.id,
             "title": self.title,
             "description": self.description,
         }
+        from app.models.user import User
+        users = User.find({"accounts.email": {"$in": [a["email"] for a in self.attendees]}})
         attendees = []
         for _attendee in self.attendees:
             email = _attendee["email"]
             attendee = {"email": email, "type": "organizer" if email == self.organizer else None}
-            _user = User.find_one({"accounts.email": email})
+            _user = list(filter(lambda u: u["accounts"][0]["email"] == email, users))
             if _user:
-                attendee["displayName"] = _user.get_primary_account().name
+                attendee["displayName"] = _user[0]["accounts"][0]["name"]
             attendees.append(attendee)
+        if self.recurrence:
+            ev["recurrence"] = {
+                "rule": "\n".join(self.recurrence),
+                "recurrenceText": self.recurrenceText
+            }
+            if self.recurrenceEnd:
+                ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.isoformat()
         ev["attendees"] = attendees if attendees else None
-        start = self.start
-        if start:
-            ev["start"] = {"date": start.strftime("%Y-%m-%d"),
-                           "time": start.strftime("%I:%M %p")}
-        end = self.end
-        if end:
-            ev["end"] = {"date": end.strftime("%Y-%m-%d"),
-                         "time": end.strftime("%I:%M %p")}
+        start = {"date": self.start.strftime("%Y-%m-%d"),
+                 "time": self.start.strftime("%I:%M %p")}
+        end = {"date": self.end.strftime("%Y-%m-%d"),
+               "time": self.end.strftime("%I:%M %p")}
+        ev["start"] = start
+        ev["end"] = end
         return ev
 
     @classmethod
     def fetch_by_date_range(cls, start, end):
         query = {"start": {"$gte": get_datetime(start), "$lt": get_datetime(end)}}
         events = cls.find(query)
-        return [cls(**ev).to_api_object() for ev in events]
+        return [cls(**ev).to_simple_object() for ev in events]
 
 
 class RecurringExceptionEvent(Event):
@@ -228,7 +284,9 @@ class RecurringExceptionEvent(Event):
         # Converts original start time into utc and calculates unix timestamp
         original_start_utc = self.originalStart.astimezone(tz=datetime.timezone.utc)
         unix_milli_timestamp = str(int(original_start_utc.timestamp() * 1000))
-        return self._recurring_event_provider_id + '__' + unix_milli_timestamp
+        master_id = self._recurring_event_provider_id
+        master_id = master_id.split('_')[0]
+        return master_id + '_' + unix_milli_timestamp
 
     # Properties
 
