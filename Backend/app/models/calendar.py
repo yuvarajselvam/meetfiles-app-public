@@ -134,17 +134,22 @@ class Calendar(CalendarBase):
         event.from_microsoft_event(result)
 
     def sync_events(self):
+        from app.models.meetsection import Meetsection
+        changed_meetsections = []
         if self.provider == "google":
             events = self.fetch_google_events()
-            print(Event.sync_google_events(events, self._account))
+            changed_meetsections = Event.sync_google_events(events, self._account)
         elif self.provider == "microsoft":
             events = self.fetch_microsoft_events()
-            print(Event.sync_microsoft_events(events, self._account))
+            changed_meetsections = Event.sync_microsoft_events(events, self._account)
         self.lastSyncedAt = datetime.utcnow()
+        for _meetsection in changed_meetsections:
+            query = {"id": _meetsection, "members.email": self._account.email}
+            meetsection = Meetsection.find_one(query)
+            meetsection.save()
         self.save()
 
     def fetch_google_events(self):
-        print("Fetching google events")
         service = self.get_service()
         sync_token = self.syncToken
         now = datetime.utcnow().isoformat() + 'Z' if not sync_token else None
@@ -168,7 +173,6 @@ class Calendar(CalendarBase):
                 sync_token = result.get('nextSyncToken')
                 break
         self.syncToken = sync_token
-        print(events)
         return events
 
     def fetch_microsoft_events(self):

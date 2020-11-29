@@ -48,17 +48,15 @@ def create_meetspace():
     }
 
     try:
-        with db.get_session() as session:
-            with session.start_transaction():
-                meetspace = Meetspace(**meetspace_object)
-                meetspace.save(session=session)
-                meetsection = Meetsection(**meetsection_object)
-                meetsection.save(session=session)
+        meetspace = Meetspace(**meetspace_object)
+        meetspace.save()
+        meetsection = Meetsection(**meetsection_object)
+        meetsection.save()
     except (ValueError, AttributeError) as e:
         return {"message": str(e)}, 400
 
     current_user.add_meetspace(meetspace_object['name'], User.Role.OWNER)
-    rv = {"meetspace": meetspace.json(), "meetsection": meetsection.json()}
+    rv = {"meetspace": meetspace.json(), "meetsection": meetsection.to_simple_object()}
     return rv, 201
 
 

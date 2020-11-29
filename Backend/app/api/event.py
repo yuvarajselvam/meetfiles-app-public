@@ -42,7 +42,7 @@ def get_event(event_id):
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
-    return event.to_api_object(), 200
+    return event.to_simple_object(), 200
 
 
 def edit_event(event_id):
@@ -77,7 +77,7 @@ def is_conflict():
     start = request.args.get("start")
     end = request.args.get("end")
     result = Event.fetch_by_date_range(start, end)
-    return {"eventsCount": len(result)}, 200
+    return {"count": len(result)}, 200
 
 
 api.add_url_rule('/', view_func=create_event, methods=['POST'])

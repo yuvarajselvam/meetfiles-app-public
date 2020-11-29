@@ -1,10 +1,12 @@
 from flask_pymongo import PyMongo
+from pymongo.errors import CollectionInvalid
 
 
 class MongoDB:
     mongo = None
     uri = None
     database = None
+    COLLECTIONS = ['users', 'events', 'recurring_exception_events', 'calendars', 'meetsections']
 
     def __init__(self, app=None):
         self.app = app
@@ -15,6 +17,11 @@ class MongoDB:
         self.uri = app.config['MONGODB_URI']
         self.database = app.config['MONGODB_DB']
         self.mongo = PyMongo(app, self.uri, connect=True)
+        for collection in self.COLLECTIONS:
+            try:
+                self.mongo.cx[self.database].create_collection(collection)
+            except CollectionInvalid:
+                pass
 
     def get_conn(self):
         try:
