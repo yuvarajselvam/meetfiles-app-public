@@ -4,6 +4,7 @@ from flask_login import current_user
 from flask import Blueprint, request, jsonify
 
 from app.models.event import Event
+from app.models.meetsection import Meetsection
 from app.models.followup import FollowUp
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ def create_event():
     event = Event(**req_json)
     calendar.add_event(event, follow_up=followup, video_conf_type=conf_type)
     rv = event.json()
+    meetsection = Meetsection.find_one({"id": event.meetsection})
+    meetsection.update_firebase()
     return jsonify(rv), 201
 
 
@@ -54,6 +57,12 @@ def edit_event(event_id):
         return {"message": "Event not found for user"}, 404
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
+
+    if event.recurrence:
+        edit_type = req_json.pop("editType", None)
+        if not edit_type:
+            return {"message": "Trying to edit recurring event without `editType`"}, 400
+
     for attribute in req_json:
         if hasattr(event, attribute):
             setattr(event, attribute, req_json[attribute])
@@ -62,6 +71,8 @@ def edit_event(event_id):
     calendar = account.get_calendar()
     calendar.edit_event(event, keys=req_json.keys())
     rv = event.json()
+    meetsection = Meetsection.find_one({"id": event.meetsection})
+    meetsection.update_firebase()
     return jsonify(rv), 200
 
 

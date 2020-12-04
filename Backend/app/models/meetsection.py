@@ -26,17 +26,20 @@ class Meetsection(MeetsectionBase):
 
     def to_full_object(self):
         result = self.to_simple_object()
-        result["events"] = {"recurring": {"items": []},
-                            "nonRecurring": {"items": []}}
+        result["events"] = {"recurring": [],
+                            "nonRecurring": []}
         events = self.fetch_events()
         for event in events:
             e = Event(**event)
             category = "recurring" if e.isRecurring else "nonRecurring"
-            result["events"][category]["items"].append(e.to_simple_object())
+            result["events"][category].append(e.to_simple_object())
         return result
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+        self.update_firebase()
+
+    def update_firebase(self):
         path = f"meetsections/{self.id}"
         firebase_service.db_insert(path, self.to_full_object())
 

@@ -5,19 +5,22 @@ class Logger:
     app = None
 
     def __init__(self, app=None):
+        self.logger = None
         if app:
             self.init_app(app)
 
     def init_app(self, app):
-        logging.addLevelName(12, "REQUEST")
-        logging.addLevelName(11, "RESPONSE")
+        logging.addLevelName(42, "REQUEST")
+        logging.addLevelName(41, "RESPONSE")
         # noinspection PyArgumentList
-        logging.basicConfig(format='[{levelname:>8s}] - {name} - {message}', style='{', level=logging.ERROR)
+        logging.basicConfig(format='[{levelname:>8s}] %{asctime}s - {name} - {message}',
+                            style='{', level=logging.WARN)
+        self.logger = logging.getLogger('request_response')
         app.logger.setLevel(logging.ERROR)
+        logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
         self.app = app
 
-    @staticmethod
-    def log_request(self, request):
+    def log(self, request, response):
         try:
             s = f"{(str(request.path) + ' ' + str(request.method)).ljust(80, ' ')}\n\n"
 
@@ -31,13 +34,8 @@ class Logger:
                     s += f"{k:<14s} : {v:<181.181s}\n"
                 elif isinstance(v, list):
                     s += f"{k:<14s} : {str(len(v)) + ' item(s) received.':<81.81s}\n"
-            self.log(12, s)
-        except Exception as e:
-            print(str(e))
+            self.logger.log(42, s)
 
-    @staticmethod
-    def log_response(self, response):
-        try:
             if response:
                 s = f"{str(response.status_code).ljust(80, ' ')}\n\n"
                 if response.json:
@@ -50,9 +48,9 @@ class Logger:
                     s = response.data
                 if isinstance(s, str):
                     s += "\n"
-                    s += "".center(200, '-')
+                    s += "".center(180, '-')
                     s += '\n'
-                    self.log(11, s)
+                    self.logger.log(41, s)
         except Exception as e:
             print(str(e))
 

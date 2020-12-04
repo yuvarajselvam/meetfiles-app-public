@@ -1,5 +1,10 @@
 import json
+import logging
+
 from firebase_admin import initialize_app, credentials as cred, db
+
+
+logger = logging.getLogger(__name__)
 
 
 class FirebaseService:
@@ -31,14 +36,17 @@ class FirebaseService:
 
     @staticmethod
     def notify_all(user_ids, title, body):
-        users_ref = db.reference('users')
-        key = None
-        update_obj = dict()
-        for u_id in user_ids:
-            if key is None:
-                notif_ref = users_ref.child(f'{u_id}/notifications')
-                key = notif_ref.push({"title": title, "body": body}).key
-            else:
-                update_obj[f'{u_id}/notifications/{key}'] = {"title": title, "body": body}
-        if update_obj:
-            users_ref.update(update_obj)
+        try:
+            users_ref = db.reference('users')
+            key = None
+            update_obj = dict()
+            for u_id in user_ids:
+                if key is None:
+                    notif_ref = users_ref.child(f'{u_id}/notifications')
+                    key = notif_ref.push({"title": title, "body": body}).key
+                else:
+                    update_obj[f'{u_id}/notifications/{key}'] = {"title": title, "body": body}
+            if update_obj:
+                users_ref.update(update_obj)
+        except Exception as e:
+            logger.exception(str(e))

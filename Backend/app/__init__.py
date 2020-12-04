@@ -24,4 +24,9 @@ def create_app():
         if path[0] not in UNPROTECTED_ROUTES and not current_user.is_authenticated:
             return current_app.login_manager.unauthorized()
 
+    @app.after_request
+    def after_app_request(response):
+        if not (200 <= response.status_code < 400):
+            extensions.logger.log(request, response)
+        return response
     return app
