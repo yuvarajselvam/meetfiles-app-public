@@ -5,6 +5,9 @@ from pymongo.operations import UpdateOne
 from app.models.base.event_base import EventBase
 from app.utils.datetime import get_start_times, get_datetime, get_rrule_from_pattern
 
+GOOGLE_RESPONSE_STATUS_MAP = {'accepted': 'accepted', 'needsAction': 'none',
+                              'declined': 'declined', 'tentative': 'tentative'}
+
 
 class Event(EventBase):
     @classmethod
@@ -32,7 +35,7 @@ class Event(EventBase):
                 bulk_write_data[event._collection].append(operation)
             Event.bulk_write(bulk_write_data['events'])
             REE.bulk_write(bulk_write_data['recurring_exception_events'])
-            return changed_meetsections
+        return changed_meetsections
 
     def from_google_event(self, ev):
         utc_now = datetime.datetime.utcnow()
@@ -42,7 +45,7 @@ class Event(EventBase):
             if is_resource:
                 continue
             response = attendee.get("responseStatus")
-            response = "none" if response == "needsAction" else response
+            response = GOOGLE_RESPONSE_STATUS_MAP[response]
             self.attendees.append({
                 "email": attendee.get("email"),
                 "responseStatus": response,
@@ -90,9 +93,14 @@ class Event(EventBase):
             "location": self.location,
             "description": self.description
         }
+        inverse_status_map = {value: key for key, value in GOOGLE_RESPONSE_STATUS_MAP.items()}
         attendees = []
         for attendee in self.attendees:
-            attendees.append({"email": attendee["email"]})
+            _attendee = {"email": attendee["email"]}
+            response = attendee.get("responseStatus")
+            if response:
+                _attendee["responseStatus"] = inverse_status_map[response]
+            attendees.append(_attendee)
         google_object["attendees"] = attendees if attendees else None
         if keys:
             [google_object.pop(k, None) for k in keys]
@@ -128,7 +136,7 @@ class Event(EventBase):
                     bulk_write_data[event._collection].append(operation)
             Event.bulk_write(bulk_write_data['events'])
             REE.bulk_write(bulk_write_data['recurring_exception_events'])
-            return changed_meetsections
+        return changed_meetsections
 
     def from_microsoft_event(self, ev, service):
         utc_now = datetime.datetime.utcnow()
