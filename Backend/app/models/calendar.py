@@ -43,7 +43,7 @@ class Calendar(CalendarBase):
         elif self.provider == "microsoft":
             self.add_microsoft_event(event, video_conf_type)
         if follow_up:
-            event.followUp = follow_up.id
+            event.followUpEvent = follow_up.id
             follow_up.add_event(event)
             follow_up.save()
         event.save()

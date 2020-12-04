@@ -22,7 +22,7 @@ class EventBase(Entity):
                  originalStart: datetime.datetime = None,
                  organizer: str = None,
                  attendees: dict = None,
-                 followUp: str = None,
+                 followUpEvent: str = None,
                  isAllDay: bool = None,
                  location: str = None,
                  description: str = None,
@@ -51,7 +51,7 @@ class EventBase(Entity):
         self.originalStart = originalStart
         self.organizer = organizer
         self.attendees = attendees or list()
-        self.followUp = followUp
+        self.followUpEvent = followUpEvent
         self.isAllDay = isAllDay
         self.location = location
         self.description = description
@@ -145,12 +145,12 @@ class EventBase(Entity):
         self._attendees = value
 
     @property
-    def followUp(self):
-        return self._follow_up
+    def followUpEvent(self):
+        return self._follow_up_event
 
-    @followUp.setter
-    def followUp(self, value):
-        self._follow_up = value
+    @followUpEvent.setter
+    def followUpEvent(self, value):
+        self._follow_up_event = value
 
     @property
     def isAllDay(self):

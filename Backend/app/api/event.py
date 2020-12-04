@@ -14,15 +14,13 @@ api = Blueprint('events', __name__, url_prefix='/api/v1/events')
 def create_event():
     req_json = request.get_json()
     user = current_user
-    if not user:
-        return {"message": f"User `{req_json['email']}` does not exist"}, 400
     account = user.get_account_by_email(req_json["email"])
     calendar = account.get_calendar()
     req_json.pop("id", None)
     req_json["user"] = user.id
     req_json["meetsection"] = req_json.pop("meetSection", None)
     req_json["attendees"] = [{"email": attendee} for attendee in req_json['attendees']]
-    followup_event_id = req_json.pop("followUpEventId", None)
+    followup_event_id = req_json.pop("followUpEvent", None)
     followup = None
     if followup_event_id:
         followup_event = Event.find_one(query={"id": followup_event_id})
@@ -45,7 +43,7 @@ def get_event(event_id):
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
-    return event.to_simple_object(), 200
+    return event.to_full_object(), 200
 
 
 def edit_event(event_id):
