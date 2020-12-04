@@ -26,7 +26,9 @@ def create_app():
 
     @app.after_request
     def after_app_request(response):
-        if not (200 <= response.status_code < 400):
+        if (200 <= response.status_code < 400) or response.status_code == 404:
+            extensions.logger.log(request, None, response.status_code)
+        else:
             extensions.logger.log(request, response)
         return response
     return app

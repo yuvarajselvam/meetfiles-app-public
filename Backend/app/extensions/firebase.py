@@ -30,9 +30,13 @@ class FirebaseService:
         db.reference().update(value)
 
     @staticmethod
+    def get_notifications(user_id):
+        return db.reference(f'users/{user_id}').order_by_child('isRead').equal_to(False).get()
+
+    @staticmethod
     def notify(user_id, title, body):
         notif_ref = db.reference(f'users/{user_id}/notifications')
-        notif_ref.push({"title": title, "body": body})
+        notif_ref.push({"title": title, "body": body, "isRead": False})
 
     @staticmethod
     def notify_all(user_ids, title, body):
@@ -43,9 +47,9 @@ class FirebaseService:
             for u_id in user_ids:
                 if key is None:
                     notif_ref = users_ref.child(f'{u_id}/notifications')
-                    key = notif_ref.push({"title": title, "body": body}).key
+                    key = notif_ref.push({"title": title, "body": body, "isRead": False}).key
                 else:
-                    update_obj[f'{u_id}/notifications/{key}'] = {"title": title, "body": body}
+                    update_obj[f'{u_id}/notifications/{key}'] = {"title": title, "body": body, "isRead": False}
             if update_obj:
                 users_ref.update(update_obj)
         except Exception as e:

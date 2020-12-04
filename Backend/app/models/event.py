@@ -242,12 +242,7 @@ class Event(EventBase):
         else:
             return None, None
 
-    def to_simple_object(self):
-        ev = {
-            "id": self.id,
-            "title": self.title,
-            "description": self.description,
-        }
+    def get_attendees(self):
         from app.models.user import User
         users = User.find({"accounts.email": {"$in": [a["email"] for a in self.attendees]}})
         attendees = []
@@ -258,6 +253,15 @@ class Event(EventBase):
             if _user:
                 attendee["displayName"] = _user[0]["accounts"][0]["name"]
             attendees.append(attendee)
+        return attendees if attendees else None
+
+    def to_simple_object(self):
+        ev = {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "attendees": self.get_attendees()
+        }
         if self.recurrence:
             ev["recurrence"] = {
                 "rule": "\n".join(self.recurrence),
@@ -265,14 +269,27 @@ class Event(EventBase):
             }
             if self.recurrenceEnd:
                 ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.isoformat()
-        ev["attendees"] = attendees if attendees else None
-        start = {"date": self.start.strftime("%Y-%m-%d"),
-                 "time": self.start.strftime("%I:%M %p")}
-        end = {"date": self.end.strftime("%Y-%m-%d"),
-               "time": self.end.strftime("%I:%M %p")}
-        ev["start"] = start
-        ev["end"] = end
+        ev["start"] = {"date": self.start.strftime("%Y-%m-%d"),
+                       "time": self.start.strftime("%I:%M %p")}
+        ev["end"] = {"date": self.end.strftime("%Y-%m-%d"),
+                     "time": self.end.strftime("%I:%M %p")}
         return ev
+
+    def to_full_object(self):
+        return self.to_simple_object()
+
+    def to_calendar_object(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "body": self.description,
+            "start": self.start.isoformat(),
+            "end": self.start.isoformat(),
+            "isAllDay": self.isAllDay,
+            "attendees": self.get_attendees(),
+            "location": self.location,
+            "recurrenceRule": self.recurrenceText
+        }
 
     @classmethod
     def fetch_by_date_range(cls, start, end):

@@ -13,3 +13,6 @@ def init_app(app):
 
     from .event import api as event_bp
     app.register_blueprint(event_bp)
+
+    from .notifications import api as notif_bp
+    app.register_blueprint(notif_bp)
