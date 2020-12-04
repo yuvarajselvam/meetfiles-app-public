@@ -146,7 +146,7 @@ class Calendar(CalendarBase):
         for _meetsection in changed_meetsections:
             query = {"id": _meetsection, "members.email": self._account.email}
             meetsection = Meetsection.find_one(query)
-            meetsection.save()
+            meetsection.update_firebase()
         self.save()
 
     def fetch_google_events(self):
