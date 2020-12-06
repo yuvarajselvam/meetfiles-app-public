@@ -63,9 +63,18 @@ def edit_event(event_id):
 
     for attribute in req_json:
         if hasattr(event, attribute):
-            setattr(event, attribute, req_json[attribute])
+            if attribute == "attendees":
+                attendees = []
+                for attendee in req_json["attendees"]:
+                    attendee.pop("type", None)
+                    attendee.pop("displayName", None)
+                    attendees.append(attendee)
+                event.attendees = attendees
+            else:
+                setattr(event, attribute, req_json[attribute])
         else:
             raise AttributeError(f"Invalid property `{attribute}` for Event")
+
     calendar = account.get_calendar()
     calendar.edit_event(event, keys=req_json.keys())
     rv = event.json()
@@ -74,23 +83,22 @@ def edit_event(event_id):
     return jsonify(rv), 200
 
 
-def list_events_by_date_range():
-    start = request.args.get("start")
-    end = request.args.get("end")
-    result = Event.fetch_by_date_range(start, end)
-    status_code = 200 if result else 204
-    return jsonify(result), status_code
+def rsvp_to_event(event_id):
+    req_json = request.get_json()
+    account = current_user.get_primary_account()
+    query = {"id": event_id, "user": current_user.id}
+    event = Event.find_one(query=query)
+    if not event:
+        return {"message": "Event not found for user"}, 404
 
-
-def is_conflict():
-    start = request.args.get("start")
-    end = request.args.get("end")
-    result = Event.fetch_by_date_range(start, end)
-    return {"count": len(result)}, 200
+    calendar = account.get_calendar()
+    calendar.rsvp_to_event(event, req_json["responseStatus"])
+    rv = event.json()
+    meetsection = Meetsection.find_one({"id": event.meetsection})
+    meetsection.update_firebase()
+    return jsonify(rv), 200
 
 
 api.add_url_rule('/', view_func=create_event, methods=['POST'])
-api.add_url_rule('/', view_func=list_events_by_date_range)
 api.add_url_rule('/<event_id>/', view_func=get_event)
 api.add_url_rule('/<event_id>/', view_func=edit_event, methods=['PUT'])
-api.add_url_rule('/conflict/', view_func=is_conflict)

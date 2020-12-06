@@ -8,6 +8,10 @@ from app.utils.datetime import get_start_times, get_datetime, get_rrule_from_pat
 GOOGLE_RESPONSE_STATUS_MAP = {'accepted': 'accepted', 'needsAction': 'none',
                               'declined': 'declined', 'tentative': 'tentative'}
 
+MICROSOFT_RESPONSE_STATUS_MAP = {'none': 'none', 'tentativelyAccepted': 'tentative',
+                                 'organizer': 'accepted', 'accepted': 'accepted',
+                                 'declined': 'declined', 'notResponded': 'none'}
+
 
 class Event(EventBase):
     @classmethod
@@ -81,15 +85,16 @@ class Event(EventBase):
         self.webLink = ev.get("htmlLink")
         self.recurrence = ev.get("recurrence")
         self.isRecurring = ev.get("recurrence") is not None
-        self.id = self.generate_id()
-        self.createdAt = utc_now
+        if not self.id:
+            self.id = self.generate_id()
+            self.createdAt = utc_now
         self.updatedAt = utc_now
 
     def to_google_event(self, keys=None):
         google_object = {
             "summary": self.title,
-            "start": {"date" if self.isAllDay else "dateTime": self.start.isoformat()},
-            "end": {"date" if self.isAllDay else "dateTime": self.end.isoformat()},
+            "start": {"date" if self.isAllDay else "dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')},
+            "end": {"date" if self.isAllDay else "dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')},
             "location": self.location,
             "description": self.description
         }
@@ -103,7 +108,7 @@ class Event(EventBase):
             attendees.append(_attendee)
         google_object["attendees"] = attendees if attendees else None
         if keys:
-            [google_object.pop(k, None) for k in keys]
+            [google_object.pop(k, None) for k in google_object.copy() if k not in keys]
         return google_object
 
     @classmethod
@@ -147,9 +152,7 @@ class Event(EventBase):
             if (not attendee_type) or attendee_type == "resource":
                 continue
             response = attendee.get("status", {}).get("response")
-            response = "none" if response == "notresponded" else response
-            response = "tentative" if response == "tentativelyaccepted" else response
-            response = "accepted" if response == "organizer" else response
+            response = MICROSOFT_RESPONSE_STATUS_MAP[response]
             self.attendees.append({
                 "email": attendee.get("emailAddress", {}).get("address"),
                 "responseStatus": response,
@@ -184,8 +187,9 @@ class Event(EventBase):
         rp = ev.get("recurrence")
         self.recurrence = get_rrule_from_pattern(rp)
         self.isRecurring = rp is not None
-        self.id = self.generate_id()
-        self.createdAt = utc_now
+        if not self.id:
+            self.id = self.generate_id()
+            self.createdAt = utc_now
         self.updatedAt = utc_now
 
     def to_microsoft_event(self):
@@ -195,8 +199,8 @@ class Event(EventBase):
                 "contentType": "HTML",
                 "content": self.description
             },
-            "start": {"dateTime": self.start.isoformat()},
-            "end": {"dateTime": self.end.isoformat()},
+            "start": {"dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')},
+            "end": {"dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')},
             "location": {"displayName": self.location},
         }
         attendees = []
@@ -205,31 +209,36 @@ class Event(EventBase):
         microsoft_object["attendees"] = attendees if attendees else None
         return microsoft_object
 
-    def expand(self, past=False):
+    def expand(self, end=None, calendar=False):
         if not self.isRecurring:
             raise ValueError("Tried to expand non recurring event")
 
-        start = self.start if past else datetime.datetime.utcnow()
-        start_times = get_start_times(self.recurrence, start=start)
+        start_times = get_start_times(self.recurrence, self.start, get_datetime(end))
         instances = []
-        query = {"recurringEventProviderId": self.providerId, "user": self.user}
+        query = {"recurringEventProviderId": self.providerId,
+                 "status": {"$ne": "cancelled"},
+                 "user": self.user}
         exceptions = RecurringExceptionEvent.find(query)
-        clone = self.to_simple_object()
+        clone = self.to_simple_object() if not calendar else self.to_calendar_object()
         duration = self.end - self.start
         for st in start_times:
-            instance = self._get_instance_from_event(st, duration, exceptions, clone)
+            instance = self._get_instance_from_event(st, duration, exceptions, clone, calendar=calendar)
             instances.append(instance)
         return instances
 
-    def _get_instance_from_event(self, start, duration, exceptions, clone):
+    def _get_instance_from_event(self, start, duration, exceptions, clone, calendar=False):
         REE = RecurringExceptionEvent
-        ree = REE(recurringEventProviderId=self.providerId, originalStart=self.start)
+        ree = REE(recurringEventProviderId=self.providerId, originalStart=start)
         exception = list(filter(lambda o: o["id"] == ree.generate_id(), exceptions))
         if exception:
-            instance = REE(**exception[0]).to_simple_object()
+            instance_obj = REE(**exception[0])
+            if not calendar:
+                instance = instance_obj.to_simple_object()
+            else:
+                instance = instance_obj.to_calendar_object()
         else:
             instance = clone.copy()
-            instance["start"] = start,
+            instance["start"] = start
             instance["end"] = start + duration
         return instance
 
@@ -248,11 +257,11 @@ class Event(EventBase):
         attendees = []
         for _attendee in self.attendees:
             email = _attendee["email"]
-            attendee = {"email": email, "type": "organizer" if email == self.organizer else None}
+            _attendee["type"] = "organizer" if email == self.organizer else None
             _user = list(filter(lambda u: u["accounts"][0]["email"] == email, users))
             if _user:
-                attendee["displayName"] = _user[0]["accounts"][0]["name"]
-            attendees.append(attendee)
+                _attendee["displayName"] = _user[0]["accounts"][0]["name"]
+            attendees.append(_attendee)
         return attendees if attendees else None
 
     def to_simple_object(self):
@@ -268,7 +277,7 @@ class Event(EventBase):
                 "recurrenceText": self.recurrenceText
             }
             if self.recurrenceEnd:
-                ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.isoformat()
+                ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.strftime('%Y-%m-%dT%H:%M:%SZ')
         ev["start"] = {"date": self.start.strftime("%Y-%m-%d"),
                        "time": self.start.strftime("%I:%M %p")}
         ev["end"] = {"date": self.end.strftime("%Y-%m-%d"),
@@ -279,23 +288,53 @@ class Event(EventBase):
         return self.to_simple_object()
 
     def to_calendar_object(self):
+        if self.isAllDay:
+            end = self.start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        else:
+            end = self.end.strftime('%Y-%m-%dT%H:%M:%SZ')
         return {
             "id": self.id,
+            "calendarId": "1",
             "title": self.title,
             "body": self.description,
-            "start": self.start.isoformat(),
-            "end": self.start.isoformat(),
+            "start": self.start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            "end": end,
             "isAllDay": self.isAllDay,
-            "attendees": self.get_attendees(),
+            "attendees": [a["email"] for a in self.attendees],
             "location": self.location,
-            "recurrenceRule": self.recurrenceText
+            "recurrenceRule": self.recurrenceText,
+            "category": "time"
         }
 
     @classmethod
-    def fetch_by_date_range(cls, start, end):
-        query = {"start": {"$gte": get_datetime(start), "$lt": get_datetime(end)}}
-        events = cls.find(query)
-        return [cls(**ev).to_simple_object() for ev in events]
+    def fetch_by_date_range(cls, start, end, user, calendar=False):
+        start = get_datetime(start)
+        end = get_datetime(end)
+        non_recurring_query = {
+            "start": {"$gte": start, "$lt": end},
+            "isRecurring": False,
+            "status": {"$ne": "cancelled"},
+            "user": user,
+        }
+        non_recurring_events = cls.find(non_recurring_query)
+        if not calendar:
+            to_ret = [cls(**ev).to_simple_object() for ev in non_recurring_events]
+        else:
+            to_ret = [cls(**ev).to_calendar_object() for ev in non_recurring_events]
+        recurring_query = {
+            "isRecurring": True,
+            "status": {"$ne": "cancelled"},
+            "$or": [{"recurrenceEnd": {"$exists": False}},
+                    {"$and": [{"recurrenceEnd": {"$gte": start}},
+                              {"start": {"$lt": end}}]}],
+            "user": user
+        }
+        recurring_events = cls.find(recurring_query)
+        for _e in recurring_events:
+            e = cls(**_e)
+            expanded = e.expand(end, calendar=calendar)
+            to_ret += list(filter(lambda i: start <= get_datetime(i["start"]) < end, expanded))
+        return to_ret
 
 
 class RecurringExceptionEvent(Event):
@@ -306,12 +345,12 @@ class RecurringExceptionEvent(Event):
         super().__init__(*args, **kwargs)
 
     def generate_id(self):
-        # Converts original start time into utc and calculates unix timestamp
-        original_start_utc = self.originalStart.astimezone(tz=datetime.timezone.utc)
+        original_start_utc = self.originalStart.astimezone(datetime.timezone.utc)
+
         unix_milli_timestamp = str(int(original_start_utc.timestamp() * 1000))
         master_id = self._recurring_event_provider_id
         master_id = master_id.split('_')[0]
-        return master_id + '_' + unix_milli_timestamp
+        return master_id + '_' + original_start_utc.strftime('%Y%m%dT%H%M%SZ')
 
     # Properties
 

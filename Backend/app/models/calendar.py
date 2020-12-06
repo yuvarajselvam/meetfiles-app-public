@@ -89,6 +89,7 @@ class Calendar(CalendarBase):
             event.from_google_event(ev)
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
+            return
 
     def add_microsoft_event(self, event, video_conf_type=None):
         service = self.get_service()
@@ -99,6 +100,7 @@ class Calendar(CalendarBase):
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
             logger.error(str(e))
+            return
         event.from_microsoft_event(result)
 
     def edit_event(self, event, keys=None):
@@ -106,7 +108,7 @@ class Calendar(CalendarBase):
             self.edit_google_event(event, keys)
         elif self.provider == "microsoft":
             self.edit_microsoft_event(event, keys)
-        self.save()
+        event.save()
 
     def edit_google_event(self, event, keys=None):
         service = self.get_service()
@@ -119,6 +121,7 @@ class Calendar(CalendarBase):
                 .execute()
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
+            return
         if ev:
             event.from_google_event(ev)
 
@@ -131,7 +134,74 @@ class Calendar(CalendarBase):
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
             logger.error(str(e))
+            return
         event.from_microsoft_event(result)
+
+    def rsvp_to_event(self, event, response):
+        if self.provider == "google":
+            self.rsvp_to_google_event(event, response)
+        elif self.provider == "microsoft":
+            self.rsvp_to_microsoft_event(event, response)
+
+    def rsvp_to_google_event(self, event, response):
+        attendees = []
+        for attendee in event.attendees.copy():
+            if attendee["email"] == self._account.email:
+                attendee["responseStatus"] = response
+            attendees.append(attendee)
+        event.attendees = attendees
+        self.edit_event(event, keys="attendees")
+
+    def rsvp_to_microsoft_event(self, event, response):
+        service = self.get_service()
+        response_endpoint_map = {"accepted": "accept", "declined": "decline",
+                                 "tentative": "tentativelyAccept"}
+        endpoint = response_endpoint_map[response]
+        url = f"https://graph.microsoft.com/v1.0/me/events/{event.providerId}/{endpoint}"
+        result = service.post(url, data={})
+        try:
+            result.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            logger.error(str(e))
+            return
+        attendees = []
+        for attendee in event.attendees.copy():
+            if attendee["email"] == self._account.email:
+                attendee["responseStatus"] = response
+            attendees.append(attendee)
+        event.attendees = attendees
+        event.save()
+
+    def watch(self):
+        if self.provider == "google":
+            self.watch_google_calendar()
+        elif self.provider == "microsoft":
+            self.watch_microsoft_calendar()
+
+    def watch_google_calendar(self):
+        service = self.get_service()
+
+        if self.notifChannel:
+            body = {"id": self.notifChannel["id"],
+                    "resourceId": self.notifChannel["resourceId"]}
+            try:
+                service.channels().stop(body=body).execute()
+                self.notifChannel = dict()
+            except GoogleHttpError as e:
+                logger.error(f"Error when stopping notif channel: {str(e)}")
+
+        user_id = self._account.get_user_id()
+        body = {"id": "", "type": "web_hook", "address": "", "token": user_id}
+        request = service.events().watch(calendarId="primary", body=body)
+        try:
+            result = request.execute()
+            self.notifChannel = result
+        except GoogleHttpError as e:
+            logger.error(f"Error when stopping notif channel: {str(e)}")
+        self.save()
+
+    def watch_microsoft_calendar(self):
+        pass
 
     def sync_events(self):
         from app.models.meetsection import Meetsection

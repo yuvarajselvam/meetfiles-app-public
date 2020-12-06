@@ -30,8 +30,10 @@ class FirebaseService:
         db.reference().update(value)
 
     @staticmethod
-    def get_notifications(user_id):
-        return db.reference(f'users/{user_id}').order_by_child('isRead').equal_to(False).get()
+    def get_notifications(user_id, read=True):
+        notif_ref = db.reference(f'users/{user_id}/notifications')
+        query = notif_ref.order_by_child('isRead')
+        return query.get() if read else query.equal_to(read).get()
 
     @staticmethod
     def notify(user_id, title, body):
