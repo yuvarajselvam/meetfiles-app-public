@@ -16,27 +16,32 @@ MICROSOFT_RESPONSE_STATUS_MAP = {'none': 'none', 'tentativelyAccepted': 'tentati
 class Event(EventBase):
     @classmethod
     def sync_google_events(cls, events, account):
-        from app.models.meetsection import Meetsection
         user = account.get_user_id()
-        default_meetsection = Meetsection.get_default(account.email).id
         provider_ids = [ev["id"] for ev in events]
-        _events = cls.find({"user": user, "providerId": {"$in": provider_ids}})
+        _events = cls.find({"providerId": {"$in": provider_ids}})
         changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
+                meetsections = []
                 e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
-                meetsection = e_obj[0]["meetsection"] if e_obj else default_meetsection
-                changed_meetsections.add(meetsection)
+                if e_obj:
+                    _meetsections = e_obj[0]["meetsections"]
+                    meetsections = list(filter(lambda m: m["user"] == user, _meetsections))
+                if not meetsections:
+                    from app.models.meetsection import Meetsection
+                    default = Meetsection.get_default(account.email).id
+                    meetsections = [{"id": default, "user": user}]
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetsection": meetsection, "user": user}
+                params = {"meetsections": meetsections}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
-                operation = UpdateOne({"providerId": event.providerId, "user": account.get_user_id()},
+                operation = UpdateOne({"providerId": event.providerId},
                                       {"$set": event.json()}, upsert=True)
                 bulk_write_data[event._collection].append(operation)
+                changed_meetsections |= set([m["id"] for m in meetsections])
             Event.bulk_write(bulk_write_data['events'])
             REE.bulk_write(bulk_write_data['recurring_exception_events'])
         return changed_meetsections
@@ -113,32 +118,38 @@ class Event(EventBase):
 
     @classmethod
     def sync_microsoft_events(cls, events, account):
-        from app.models.meetsection import Meetsection
-        user = account.get_user_id()
         service = account.get_service()
-        default_meetsection = Meetsection.get_default(account.email).id
+        user = account.get_user_id()
         provider_ids = [ev["id"] for ev in events]
-        _events = cls.find({"user": user, "providerId": {"$in": provider_ids}})
+        _events = cls.find({"providerId": {"$in": provider_ids}})
         changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
-                if not ev.get("type") == "occurrence":
-                    e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
-                    meetsection = e_obj[0]["meetsection"] if e_obj else default_meetsection
-                    changed_meetsections.add(meetsection)
-                    recurring_event_id = ev.get("seriesMasterId")
-                    params = {"meetsection": meetsection, "user": user}
-                    event = Event(**params) if not recurring_event_id else REE(**params)
-                    event.recurringEventProviderId = recurring_event_id
-                    if ev.get("@removed"):
-                        event.isDeleted = True
-                    else:
-                        event.from_microsoft_event(ev, service)
-                    operation = UpdateOne({"providerId": event.providerId, "user": user},
-                                          {"$set": event.json()}, upsert=True)
-                    bulk_write_data[event._collection].append(operation)
+                if ev.get("type") == "occurrence":
+                    continue
+                meetsections = []
+                e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                if e_obj:
+                    _meetsections = e_obj[0]["meetsections"]
+                    meetsections = list(filter(lambda m: m["user"] == user, _meetsections))
+                if not meetsections:
+                    from app.models.meetsection import Meetsection
+                    default = Meetsection.get_default(account.email).id
+                    meetsections = [{"id": default, "user": user}]
+                recurring_event_id = ev.get("seriesMasterId")
+                params = {"meetsections": meetsections}
+                event = Event(**params) if not recurring_event_id else REE(**params)
+                event.recurringEventProviderId = recurring_event_id
+                if ev.get("@removed"):
+                    event.isDeleted = True
+                else:
+                    event.from_microsoft_event(ev, service)
+                operation = UpdateOne({"providerId": event.providerId},
+                                      {"$set": event.json()}, upsert=True)
+                changed_meetsections |= set([m["id"] for m in meetsections])
+                bulk_write_data[event._collection].append(operation)
             Event.bulk_write(bulk_write_data['events'])
             REE.bulk_write(bulk_write_data['recurring_exception_events'])
         return changed_meetsections
@@ -215,9 +226,7 @@ class Event(EventBase):
 
         start_times = get_start_times(self.recurrence, self.start, get_datetime(end))
         instances = []
-        query = {"recurringEventProviderId": self.providerId,
-                 "status": {"$ne": "cancelled"},
-                 "user": self.user}
+        query = {"recurringEventProviderId": self.providerId, "status": {"$ne": "cancelled"}}
         exceptions = RecurringExceptionEvent.find(query)
         clone = self.to_simple_object() if not calendar else self.to_calendar_object()
         duration = self.end - self.start
@@ -314,7 +323,7 @@ class Event(EventBase):
             "start": {"$gte": start, "$lt": end},
             "isRecurring": False,
             "status": {"$ne": "cancelled"},
-            "user": user,
+            "meetsections.user": user
         }
         non_recurring_events = cls.find(non_recurring_query)
         if not calendar:
@@ -327,7 +336,7 @@ class Event(EventBase):
             "$or": [{"recurrenceEnd": {"$exists": False}},
                     {"$and": [{"recurrenceEnd": {"$gte": start}},
                               {"start": {"$lt": end}}]}],
-            "user": user
+            "meetsections.user": user
         }
         recurring_events = cls.find(recurring_query)
         for _e in recurring_events:
