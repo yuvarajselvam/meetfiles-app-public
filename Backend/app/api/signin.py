@@ -92,10 +92,6 @@ def signin_with_microsoft():
 
 @precheck(required_fields=['code'])
 def signin_with_microsoft_callback():
-    if app.config.get('FLASK_ENV') == "dev":
-        if app.config.get('SESSION_COOKIE_DOMAIN') not in request.url:
-            return redirect(base_url + request.full_path)
-
     microsoft = OAuth2Session(microsoft_client_id, redirect_uri=microsoft_redirect_uri, state=session['oauth_state'])
     try:
         code = request.args.get('code')

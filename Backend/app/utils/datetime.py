@@ -93,5 +93,7 @@ def get_rruleset(recurrence, start):
 def get_start_times(recurrence, start, end=None):
     if end is None:
         end = datetime.utcnow() + timedelta(days=90)
+    else:
+        end = get_datetime(end).astimezone(pytz.utc).replace(tzinfo=None)
     start = get_datetime(start).astimezone(pytz.utc).replace(tzinfo=None)
     return get_rruleset(recurrence, start).between(start, end, inc=True)
