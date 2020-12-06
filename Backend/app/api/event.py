@@ -33,13 +33,12 @@ def create_event():
     event = Event(**req_json)
     calendar.add_event(event, follow_up=followup, video_conf_type=conf_type)
     rv = event.json()
-    meetsection = Meetsection.find_one({"id": event.meetsection})
-    meetsection.update_firebase()
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
     return jsonify(rv), 201
 
 
 def get_event(event_id):
-    query = {"id": event_id, "user": current_user.id}
+    query = {"id": event_id, "meetsections.user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
@@ -49,7 +48,7 @@ def get_event(event_id):
 def edit_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
-    query = {"id": event_id, "user": current_user.id}
+    query = {"id": event_id, "meetsections.user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
@@ -78,15 +77,14 @@ def edit_event(event_id):
     calendar = account.get_calendar()
     calendar.edit_event(event, keys=req_json.keys())
     rv = event.json()
-    meetsection = Meetsection.find_one({"id": event.meetsection})
-    meetsection.update_firebase()
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
     return jsonify(rv), 200
 
 
 def rsvp_to_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
-    query = {"id": event_id, "user": current_user.id}
+    query = {"id": event_id, "meetsections.user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
@@ -94,8 +92,7 @@ def rsvp_to_event(event_id):
     calendar = account.get_calendar()
     calendar.rsvp_to_event(event, req_json["responseStatus"])
     rv = event.json()
-    meetsection = Meetsection.find_one({"id": event.meetsection})
-    meetsection.update_firebase()
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
     return jsonify(rv), 200
 
 

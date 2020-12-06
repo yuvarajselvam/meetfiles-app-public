@@ -35,6 +35,13 @@ class Meetsection(MeetsectionBase):
             result["events"][category].append(e.to_simple_object())
         return result
 
+    def add_user(self, user_email, owner=False):
+        role = self.Role.USER.value if not owner else self.Role.OWNER.value
+        self.members.append({"email": user_email, "role": role})
+
+    def remove_user(self, user_email):
+        self.members = [member for member in self.members if not member["email"] == user_email]
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         self.update_firebase()
@@ -43,12 +50,13 @@ class Meetsection(MeetsectionBase):
         path = f"meetsections/{self.id}"
         firebase_service.db_insert(path, self.to_full_object())
 
-    def add_user(self, user_email, owner=False):
-        role = self.Role.USER.value if not owner else self.Role.OWNER.value
-        self.members.append({"email": user_email, "role": role})
-
-    def remove_user(self, user_email):
-        self.members = [member for member in self.members if not member["email"] == user_email]
+    @classmethod
+    def bulk_update_firebase(cls, meetsection_ids):
+        insert_obj = dict()
+        meetsections = Meetsection.find({"id": {"$in": meetsection_ids}})
+        for m in meetsections:
+            insert_obj[f"meetsections/{m['id']}"] = Meetsection(**m).to_full_object()
+        firebase_service.db_insert(insert_obj)
 
     @classmethod
     def get_default_name(cls, user_name):
@@ -68,5 +76,4 @@ class Meetsection(MeetsectionBase):
 
     def fetch_events(self):
         from app.models.event import Event
-        self.members = self.members
-        return Event.find({"status": {"$ne": "cancelled"}, "meetsection": self.id})
+        return Event.find({"status": {"$ne": "cancelled"}, "meetsections.id": self.id})
