@@ -23,7 +23,7 @@ class CalendarBase(Entity):
         self.provider = provider
         self.providerId = providerId
         self.syncToken = syncToken
-        self.notifChannel = notifChannel or {}
+        self.notifChannel = notifChannel or dict()
         self.lastSyncedAt = lastSyncedAt
 
     @property

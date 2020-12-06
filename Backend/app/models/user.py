@@ -63,6 +63,8 @@ class User(UserBase):
             account = self.get_account(acc["type"])
             calendar = account.get_calendar()
             calendar.sync_events()
+            # if initial:
+            #     calendar.watch()
 
     # Flask login - Properties
 
