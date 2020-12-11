@@ -6,6 +6,7 @@ from .db import MongoDB
 from .logging import Logger
 from .mailing import MailingService
 from .firebase import FirebaseService
+from .after_response import AfterResponse
 
 db = MongoDB()
 logger = Logger()
@@ -14,6 +15,7 @@ paranoid = Paranoid()
 login_manager = LoginManager()
 mailer = MailingService()
 firebase_service = FirebaseService()
+after_response = AfterResponse()
 
 
 def init_app(app):
@@ -22,5 +24,6 @@ def init_app(app):
                       session,
                       login_manager,
                       mailer,
-                      firebase_service):
+                      firebase_service,
+                      after_response):
         extension.init_app(app)

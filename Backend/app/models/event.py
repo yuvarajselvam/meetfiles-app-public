@@ -2,6 +2,7 @@ import datetime
 
 from pymongo.operations import UpdateOne
 
+from app.models.followup import FollowUp
 from app.models.base.event_base import EventBase
 from app.utils.datetime import get_start_times, get_datetime, get_rrule_from_pattern
 
@@ -24,14 +25,16 @@ class Event(EventBase):
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
-                meetsections = []
+                from app.models.meetsection import Meetsection
+                default = Meetsection.get_default(account.email).id
                 e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                # TODO: Use ETag to verify if event is not already updated
                 if e_obj:
                     _meetsections = e_obj[0]["meetsections"]
-                    meetsections = list(filter(lambda m: m["user"] == user, _meetsections))
-                if not meetsections:
-                    from app.models.meetsection import Meetsection
-                    default = Meetsection.get_default(account.email).id
+                    meetsections = _meetsections
+                    if not list(filter(lambda m: m["user"] == user, _meetsections)):
+                        meetsections.append({"id": default, "user": user})
+                else:
                     meetsections = [{"id": default, "user": user}]
                 recurring_event_id = ev.get("recurringEventId")
                 params = {"meetsections": meetsections}
@@ -100,6 +103,7 @@ class Event(EventBase):
             "summary": self.title,
             "start": {"date" if self.isAllDay else "dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')},
             "end": {"date" if self.isAllDay else "dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')},
+            "recurrence": self.recurrence,
             "location": self.location,
             "description": self.description
         }
@@ -203,7 +207,7 @@ class Event(EventBase):
             self.createdAt = utc_now
         self.updatedAt = utc_now
 
-    def to_microsoft_event(self):
+    def to_microsoft_event(self, keys=None):
         microsoft_object = {
             "subject": self.title,
             "body": {
@@ -218,6 +222,8 @@ class Event(EventBase):
         for attendee in self.attendees:
             attendees.append({"email": attendee["email"]})
         microsoft_object["attendees"] = attendees if attendees else None
+        if keys:
+            [microsoft_object.pop(k, None) for k in microsoft_object.copy() if k not in keys]
         return microsoft_object
 
     def expand(self, end=None, calendar=False):
@@ -226,7 +232,11 @@ class Event(EventBase):
 
         start_times = get_start_times(self.recurrence, self.start, get_datetime(end))
         instances = []
-        query = {"recurringEventProviderId": self.providerId, "status": {"$ne": "cancelled"}}
+        query = {
+            "recurringEventProviderId": self.providerId,
+            "status": {"$ne": "cancelled"},
+            "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
+        }
         exceptions = RecurringExceptionEvent.find(query)
         clone = self.to_simple_object() if not calendar else self.to_calendar_object()
         duration = self.end - self.start
@@ -247,8 +257,17 @@ class Event(EventBase):
                 instance = instance_obj.to_calendar_object()
         else:
             instance = clone.copy()
-            instance["start"] = start
-            instance["end"] = start + duration
+            end = start + duration
+            if not calendar:
+                instance["start"] = {"date": start.strftime("%Y-%m-%d"),
+                                     "time": start.strftime("%I:%M %p"),
+                                     "utc": start.strftime('%Y-%m-%dT%H:%M:%SZ')}
+                instance["end"] = {"date": end.strftime("%Y-%m-%d"),
+                                   "time": end.strftime("%I:%M %p"),
+                                   "utc": end.strftime('%Y-%m-%dT%H:%M:%SZ')}
+            else:
+                instance["start"] = start.strftime('%Y-%m-%dT%H:%M:%SZ')
+                instance["end"] = end.strftime('%Y-%m-%dT%H:%M:%SZ')
         return instance
 
     def next_start_end_in_series(self):
@@ -270,6 +289,7 @@ class Event(EventBase):
             _user = list(filter(lambda u: u["accounts"][0]["email"] == email, users))
             if _user:
                 _attendee["displayName"] = _user[0]["accounts"][0]["name"]
+                _attendee["imageUrl"] = _user[0]["accounts"][0]["imageUrl"]
             attendees.append(_attendee)
         return attendees if attendees else None
 
@@ -288,26 +308,39 @@ class Event(EventBase):
             if self.recurrenceEnd:
                 ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.strftime('%Y-%m-%dT%H:%M:%SZ')
         ev["start"] = {"date": self.start.strftime("%Y-%m-%d"),
-                       "time": self.start.strftime("%I:%M %p")}
+                       "time": self.start.strftime("%I:%M %p"),
+                       "utc": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')}
         ev["end"] = {"date": self.end.strftime("%Y-%m-%d"),
-                     "time": self.end.strftime("%I:%M %p")}
+                     "time": self.end.strftime("%I:%M %p"),
+                     "utc": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')}
         return ev
 
     def to_full_object(self):
-        return self.to_simple_object()
+        from flask_login import current_user
+        result = self.to_simple_object()
+        if not current_user.is_anonymous():
+            meetsection = list(filter(lambda m: m["user"] == current_user.id, self.meetsections))[0]
+            result["meetSection"] = {"id": meetsection["id"]}
+        if self.isRecurring:
+            result["recurringEvents"] = self.expand()
+        elif self.followUp:
+            follow_up = FollowUp.find_one({"id": self.followUp})
+            follow_up_events = self.find({"id": {"$in": follow_up.events}})
+            result["followUpEvents"] = [Event(**fe).to_simple_object() for fe in follow_up_events]
+        return result
 
     def to_calendar_object(self):
         if self.isAllDay:
-            end = self.start.strftime('%Y-%m-%dT%H:%M:%SZ')
+            end = self.end - datetime.timedelta(seconds=1)
         else:
-            end = self.end.strftime('%Y-%m-%dT%H:%M:%SZ')
+            end = self.end
         return {
             "id": self.id,
             "calendarId": "1",
             "title": self.title,
             "body": self.description,
             "start": self.start.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            "end": end,
+            "end": end.strftime('%Y-%m-%dT%H:%M:%SZ'),
             "isAllDay": self.isAllDay,
             "attendees": [a["email"] for a in self.attendees],
             "location": self.location,
@@ -323,7 +356,8 @@ class Event(EventBase):
             "start": {"$gte": start, "$lt": end},
             "isRecurring": False,
             "status": {"$ne": "cancelled"},
-            "meetsections.user": user
+            "meetsections.user": user,
+            "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
         }
         non_recurring_events = cls.find(non_recurring_query)
         if not calendar:
@@ -333,16 +367,21 @@ class Event(EventBase):
         recurring_query = {
             "isRecurring": True,
             "status": {"$ne": "cancelled"},
-            "$or": [{"recurrenceEnd": {"$exists": False}},
-                    {"$and": [{"recurrenceEnd": {"$gte": start}},
-                              {"start": {"$lt": end}}]}],
+            "$and": [{"$or": [{"recurrenceEnd": {"$exists": False}},
+                              {"$and": [{"recurrenceEnd": {"$gte": start}},
+                                        {"start": {"$lt": end}}]}]},
+                     {"$or": [{"isDeleted": {"$exists": False}},
+                              {"isDeleted": False}]}],
             "meetsections.user": user
         }
         recurring_events = cls.find(recurring_query)
         for _e in recurring_events:
             e = cls(**_e)
             expanded = e.expand(end, calendar=calendar)
-            to_ret += list(filter(lambda i: start <= get_datetime(i["start"]) < end, expanded))
+            if not calendar:
+                to_ret += list(filter(lambda i: start <= get_datetime(i["start"]["utc"]) < end, expanded))
+            else:
+                to_ret += list(filter(lambda i: start <= get_datetime(i["start"]) < end, expanded))
         return to_ret
 
 

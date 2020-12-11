@@ -15,28 +15,23 @@ class Meetsection(MeetsectionBase):
         for k, v in result.items():
             if isinstance(v, datetime):
                 result[k] = v.isoformat()
-        current_user_email = current_user.get_primary_email()
-        if result["createdBy"] == current_user_email:
-            result["type"] = "self"
-        elif result["createdBy"] == "system":
-            result["type"] = "default"
-        else:
-            result["type"] = "shared"
         return result
 
     def to_full_object(self):
         result = self.to_simple_object()
-        result["events"] = {"recurring": [],
-                            "nonRecurring": []}
+        result["events"] = []
         events = self.fetch_events()
         for event in events:
             e = Event(**event)
-            category = "recurring" if e.isRecurring else "nonRecurring"
-            result["events"][category].append(e.to_simple_object())
+            if e.isRecurring:
+                result["events"] += e.expand()
+            else:
+                result["events"].append(e.to_simple_object())
         return result
 
     def add_user(self, user_email, owner=False):
         role = self.Role.USER.value if not owner else self.Role.OWNER.value
+        self.remove_user(user_email)
         self.members.append({"email": user_email, "role": role})
 
     def remove_user(self, user_email):
@@ -76,4 +71,7 @@ class Meetsection(MeetsectionBase):
 
     def fetch_events(self):
         from app.models.event import Event
-        return Event.find({"status": {"$ne": "cancelled"}, "meetsections.id": self.id})
+        return Event.find({"status": {"$ne": "cancelled"},
+                           "meetsections.id": self.id,
+                           "$or": [{"isDeleted": {"$exists": False}},
+                                   {"isDeleted": False}]})

@@ -127,7 +127,7 @@ class Calendar(CalendarBase):
 
     def edit_microsoft_event(self, event, keys=None):
         service = self.get_service()
-        microsoft_event = event.to_microsoft_event()
+        microsoft_event = event.to_microsoft_event(keys)
         url = f"https://graph.microsoft.com/v1.0/me/events/{event.providerId}"
         result = service.patch(url, data=microsoft_event)
         try:
@@ -172,6 +172,28 @@ class Calendar(CalendarBase):
         event.attendees = attendees
         event.save()
 
+    def delete_event(self, event):
+        if self.provider == "google":
+            self.delete_google_event(event)
+        elif self.provider == "microsoft":
+            self.delete_microsoft_event(event)
+
+    def delete_google_event(self, event):
+        service = self.get_service()
+        try:
+            service.events() \
+                .delete(calendarId='primary', eventId=event.providerId) \
+                .execute()
+        except GoogleHttpError as e:
+            logger.error(e.resp, e.content, e.error_details)
+            return
+        event.isDeleted = True
+        event.status = Event.Status.CANCELLED.value
+        event.save()
+
+    def delete_microsoft_event(self, event):
+        pass
+
     def watch(self):
         if self.provider == "google":
             self.watch_google_calendar()
@@ -214,7 +236,7 @@ class Calendar(CalendarBase):
             changed_meetsections = Event.sync_microsoft_events(events, self._account)
         self.lastSyncedAt = datetime.utcnow()
         for _meetsection in changed_meetsections:
-            query = {"id": _meetsection, "members.email": self._account.email}
+            query = {"id": _meetsection}
             meetsection = Meetsection.find_one(query)
             meetsection.update_firebase()
         self.save()

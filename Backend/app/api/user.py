@@ -1,11 +1,12 @@
 import json
 import logging
 
-from flask import Blueprint, request, redirect
 from flask_login import current_user, logout_user
+from flask import Blueprint, request, redirect, current_app
 
 from app import app
 from app.models.user import User
+from app.models.meetsection import Meetsection
 
 
 logger = logging.getLogger(__name__)
@@ -17,17 +18,37 @@ def get_user(user_id):
         user_id = current_user.id
         with open(app.config.get('FIREBASE_OPTS_PATH')) as f:
             firebase = json.load(f)
+
     user = User.find_one({"id": user_id})
     if not user:
         return {"message": "User not found"}, 404
-    obj = user.json()
+    to_ret = user.json()
+
     # TODO: Change accounts naming
     # As accounts can mean both meetfiles account and integration accounts
-    del obj["primaryAccount"]
-    obj["account"] = obj.pop("accounts")[0]
+
+    to_ret.pop("primaryAccount", None)
+    to_ret["account"] = to_ret.pop("accounts")[0]
     if firebase:
-        obj["firebase"] = firebase
-    return obj, 200
+        to_ret["firebase"] = firebase
+
+    to_ret["meetSections"] = []
+    email = user.get_primary_email()
+    meetsections = Meetsection.fetch_for_user(email)
+    for meetsection in meetsections:
+        m = Meetsection(**meetsection).to_simple_object()
+        if m["createdBy"] == email:
+            m["type"] = "self"
+        elif m["createdBy"] == "system":
+            m["type"] = "default"
+        else:
+            m["type"] = "shared"
+        to_ret["meetSections"].append(m)
+
+    @current_app.after_response
+    def post_process():
+        user.sync_calendars()
+    return to_ret, 200
 
 
 def edit_user(user_id):
