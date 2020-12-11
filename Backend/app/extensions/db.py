@@ -1,5 +1,6 @@
 from flask_pymongo import PyMongo
-from pymongo.errors import CollectionInvalid
+from pymongo import TEXT
+from pymongo.errors import CollectionInvalid, OperationFailure
 
 
 class MongoDB:
@@ -17,11 +18,30 @@ class MongoDB:
         self.uri = app.config['MONGODB_URI']
         self.database = app.config['MONGODB_DB']
         self.mongo = PyMongo(app, self.uri, connect=True)
+
+        # Create Collections
         for collection in self.COLLECTIONS:
             try:
                 self.mongo.cx[self.database].create_collection(collection)
             except CollectionInvalid:
                 pass
+
+        # Create Index
+        ev_index_weights = {'title': 2, 'description': 1}
+        ev_index_keys = [('title', TEXT), ('description', TEXT)]
+        try:
+            events = self.mongo.cx[self.database]["events"]
+            events.create_index(ev_index_keys, weights=ev_index_weights,
+                                default_language="english")
+        except OperationFailure:
+            pass
+
+        try:
+            exceptions = self.mongo.cx[self.database]["recurring_exception_events"]
+            exceptions.create_index(ev_index_keys, weights=ev_index_weights,
+                                    default_language="english")
+        except OperationFailure:
+            pass
 
     def get_conn(self):
         try:

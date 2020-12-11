@@ -1,13 +1,13 @@
 import logging
 
 from flask_login import current_user
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
 from app import app
 from app.models.user import User
-from app.extensions import mailer, firebase_service
 from app.utils.precheck import precheck
 from app.models.meetsection import Meetsection
+from app.extensions import mailer, firebase_service
 
 logger = logging.getLogger(__name__)
 api = Blueprint('meetsections', __name__, url_prefix='/api/v1/meetsections')
@@ -17,7 +17,7 @@ def send_invite(to_address, invitor):
     login_path = app.config.get('APP_URL') + '/login'
     sub = "You've been invited to Meetfiles!"
     msg = f'{invitor} is inviting you to their meetsection.\n' \
-          f'Click <a href="{login_path}">here</a>.'
+          f'Click here: {login_path}.'
     mailer.send_message(to_address, sub, msg)
 
 
@@ -33,21 +33,23 @@ def create_meetsection():
     }
     meetsection = Meetsection(**meetsection_object)
     meetsection.add_user(current_user_email, owner=True)
-    users = [current_user.id]
-    for email in request_json.get('members', []):
-        if not current_user_email == email:
-            user = User.find_one({"accounts.email": email})
-            if not user:
-                send_invite(email, current_user_email)
-            else:
-                users.append(user.id)
-            meetsection.add_user(email)
+    members = request_json.get('members', [])
+    [meetsection.add_user(email) for email in members if not current_user_email == email]
     try:
         meetsection.save()
     except (ValueError, AttributeError) as e:
         return {"message": str(e)}, 400
-    firebase_service.notify_all(users, title="Meetsection created",
-                                body=f"Meetsection {request_json.get('name')} successfully created")
+
+    @current_app.after_response
+    def notify_and_send_invite():
+        _users = User.find({"accounts.email": {"$in": members}})
+        to_addr = ', '.join(list(set(members) - set([u["accounts"][0]["email"] for u in _users])))
+        if to_addr:
+            send_invite(to_addr, current_user.name)
+        firebase_service.notify_all([u["id"] for u in _users if not current_user.id == u["id"]],
+                                    title=f"You've been added to {meetsection.name} meetsection.",
+                                    body=f"{current_user_json['name']} has added you to their meetsection.")
+
     return meetsection.to_simple_object(), 201
 
 
@@ -85,17 +87,29 @@ def edit_meetsection(meetsection_id):
 
 
 def add_user_to_meetsection(meetsection_id):
-    user_emails = request.get_json()["emails"]
+    members = request.get_json()["emails"]
+    current_user_name = current_user.get_primary_account().name
     current_user_email = current_user.get_primary_email()
     query = {"id": meetsection_id, "members.email": current_user_email}
     meetsection = Meetsection.find_one(query=query)
     if not meetsection:
         return {"message": "Meetsection not found for user"}, 404
-    for email in user_emails:
-        if not User.find_one({"accounts.email": email}):
-            send_invite(email, current_user_email)
-        meetsection.add_user(email)
-    meetsection.save()
+
+    [meetsection.add_user(email) for email in members if not current_user_email == email]
+
+    try:
+        meetsection.save()
+    except (ValueError, AttributeError) as e:
+        return {"message": str(e)}, 400
+
+    @current_app.after_response
+    def notify_and_send_invite():
+        _users = User.find({"accounts.email": {"$in": members}})
+        to_addr = ', '.join(list(set(members) - set([u["accounts"][0]["email"] for u in _users])))
+        send_invite(to_addr, current_user.name)
+        firebase_service.notify_all([u["id"] for u in _users if not current_user.id == u["id"]],
+                                    title=f"You've been added to {meetsection.name} meetsection.",
+                                    body=f"{current_user_name} has added you to their meetsection.")
     return meetsection.to_simple_object(), 200
 
 
@@ -106,7 +120,10 @@ def remove_user_from_meetsection(meetsection_id):
     if not meetsection:
         return {"message": "Meetsection not found for user"}, 404
     meetsection.remove_user(user_email)
-    meetsection.save()
+    try:
+        meetsection.save()
+    except (ValueError, AttributeError) as e:
+        return {"message": str(e)}, 400
     return meetsection.to_simple_object(), 200
 
 

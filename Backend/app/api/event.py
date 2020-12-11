@@ -3,9 +3,10 @@ import logging
 from flask_login import current_user
 from flask import Blueprint, request, jsonify
 
-from app.models.event import Event
-from app.models.meetsection import Meetsection
 from app.models.followup import FollowUp
+from app.models.meetsection import Meetsection
+from app.models.event import Event, RecurringExceptionEvent as REE
+
 
 logger = logging.getLogger(__name__)
 api = Blueprint('events', __name__, url_prefix='/api/v1/events')
@@ -17,9 +18,12 @@ def create_event():
     account = user.get_account_by_email(req_json["email"])
     calendar = account.get_calendar()
     req_json.pop("id", None)
-    req_json["user"] = user.id
-    req_json["meetsection"] = req_json.pop("meetSection", None)
-    req_json["attendees"] = [{"email": attendee} for attendee in req_json['attendees']]
+    req_json["meetsections"] = {"id": req_json.pop("meetSection", None), "user": user.id}
+    req_json["attendees"] = [{"email": attendee["email"]} for attendee in req_json['attendees']]
+    rr = req_json.pop("recurrence", None)
+    if rr:
+        req_json["recurrence"] = [rule for rule in str(rr).split('\n')
+                                  if not rule.startswith('DTSTART')]
     followup_event_id = req_json.pop("followUpEvent", None)
     followup = None
     if followup_event_id:
@@ -96,6 +100,64 @@ def rsvp_to_event(event_id):
     return jsonify(rv), 200
 
 
+def delete_event(event_id):
+    account = current_user.get_primary_account()
+
+    query = {"id": event_id, "meetsections.user": current_user.id}
+    event = Event.find_one(query=query)
+    if not event:
+        return {"message": "Event not found for user"}, 404
+    if account.email != event.organizer:
+        return {"message": "Permission denied"}, 403
+
+    calendar = account.get_calendar()
+    calendar.delete_event(event)
+    return {}, 200
+
+
+def move_event(event_id):
+    req_json = request.get_json()
+
+    query = {"id": event_id, "meetsections.user": current_user.id}
+    event = Event.find_one(query=query)
+    if not event:
+        return {"message": "Event not found for user"}, 404
+
+    meetsections = event.meetsections
+    for m in meetsections:
+        if m["user"] == current_user.id:
+            m["id"] = req_json["meetSection"]
+    print(event.meetsections)
+    event.meetsections = meetsections
+    event.save()
+    return {"message": "success"}, 200
+
+
+def conflicts():
+    start = request.args.get("start")
+    end = request.args.get("end")
+    result = Event.fetch_by_date_range(start, end, current_user.id)
+    return {"count": len(result)}, 200
+
+
+def search():
+    q = request.args.get("q")
+    meetsection = request.args.get("meetSection")
+    if not q:
+        return {"message": "Search term `q` cannot be empty."}
+    query = {"$text": {"$search": q.strip()}, "meetsections.user": current_user.id}
+    if meetsection:
+        query["meetsections.id"] = meetsection
+    results = [Event(**e).to_simple_object() for e in Event.find(query)] + \
+              [REE(**ree).to_simple_object() for ree in REE.find(query)]
+    status_code = 200 if results else 204
+    return jsonify(results), status_code
+
+
 api.add_url_rule('/', view_func=create_event, methods=['POST'])
 api.add_url_rule('/<event_id>/', view_func=get_event)
 api.add_url_rule('/<event_id>/', view_func=edit_event, methods=['PUT'])
+api.add_url_rule('/<event_id>/', view_func=delete_event, methods=['DELETE'])
+api.add_url_rule('/<event_id>/move/', view_func=move_event, methods=['PUT'])
+api.add_url_rule('/conflicts/', view_func=conflicts)
+api.add_url_rule('/search/', view_func=search)
