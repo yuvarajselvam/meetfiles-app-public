@@ -1,17 +1,21 @@
+import os
 import base64
+import pickle
 import logging
 
 from email.mime.text import MIMEText
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlow
 
 logger = logging.getLogger(__name__)
 
 
 class MailingService:
     service = None
-    sender = "yymusicplayer@gmail.com"
+    sender = "imyuvarajselvam@gmail.com"
 
     def __init__(self, app=None):
         self.app = app
@@ -19,8 +23,21 @@ class MailingService:
             self.init_app(app)
 
     def init_app(self, app):
-        GOOGLE_API_DEVELOPER_KEY = app.config.get('GOOGLE_API_DEVELOPER_KEY')
-        self.service = build('gmail', 'v1', developerKey=GOOGLE_API_DEVELOPER_KEY)
+        credentials = None
+        if os.path.exists('app/resources/token.pickle'):
+            with open('app/resources/token.pickle', 'rb') as token:
+                credentials = pickle.load(token)
+        if not credentials or not credentials.valid:
+            if credentials and credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+            else:
+                CLIENT_CONFIG = app.config.get('GMAIL_CLIENT_CONFIG_PATH')
+                GMAIL_SCOPES = ['https://mail.google.com/']
+                flow = InstalledAppFlow.from_client_secrets_file(CLIENT_CONFIG, GMAIL_SCOPES)
+                credentials = flow.run_local_server(port=0)
+            with open('app/resources/token.pickle', 'wb') as token:
+                pickle.dump(credentials, token)
+        self.service = build('gmail', 'v1', credentials=credentials)
 
     def create_message(self, to, subject, message_text):
         message = MIMEText(message_text)

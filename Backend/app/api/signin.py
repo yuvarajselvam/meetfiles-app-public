@@ -57,7 +57,7 @@ def signin_with_google_callback():
         return {"message": "Invalid Credentials."}, 401
     user_info = google.get('https://www.googleapis.com/oauth2/v1/userinfo').json()
     user = User.find_one({"accounts.email": user_info['email'], "accounts.type": "google"})
-    path = '/get-started/create'
+    path = '/home/'
     initial = False
     if not user:
         initial = True
@@ -105,7 +105,7 @@ def signin_with_microsoft_callback():
 
     user_info = microsoft.get('https://graph.microsoft.com/v1.0/me').json()
     user = User.find_one({"accounts.email": email, "accounts.type": "microsoft"})
-    path = '/get-started/create'
+    path = '/home/'
     initial = False
     if not user:
         initial = True
