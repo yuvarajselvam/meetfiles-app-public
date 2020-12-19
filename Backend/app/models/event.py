@@ -158,7 +158,7 @@ class Event(EventBase):
                     meetsections = [Meetsection.get_default(account.email).id]
                 meetsections = list(set(meetsections))
                 recurring_event_id = ev.get("seriesMasterId")
-                params = {"meetsections": meetsections}
+                params = {"meetsections": meetsections, "user": user}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 if ev.get("@removed"):
@@ -260,6 +260,31 @@ class Event(EventBase):
             instances.append(instance)
         return instances
 
+    def expand_for_firebase(self):
+        if not self.isRecurring:
+            raise ValueError("Tried to expand non recurring event")
+
+        start_times = get_start_times(self.recurrence, self.start)
+        query = {
+            "recurringEventProviderId": self.providerId,
+            "status": {"$ne": "cancelled"},
+            "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
+        }
+        exceptions = RecurringExceptionEvent.find(query)
+        clone = self.to_simple_object()
+        instances = clone.copy()
+        instances["recurringEvents"] = dict()
+        duration = self.end - self.start
+        for st in start_times:
+            instance = self._get_instance_from_event(st, duration, exceptions, clone)
+            start = get_datetime(instance["start"]["date"])
+            if start.year not in instances["recurringEvents"]:
+                instances["recurringEvents"][start.year] = dict()
+            if start.month not in instances["recurringEvents"][start.year]:
+                instances["recurringEvents"][start.year][start.month] = dict()
+            instances["recurringEvents"][start.year][start.month][start.day] = instance
+        return instances
+
     def _get_instance_from_event(self, start, duration, exceptions, clone, calendar=False):
         REE = RecurringExceptionEvent
         ree = REE(recurringEventProviderId=self.providerId, originalStart=start)
@@ -330,12 +355,18 @@ class Event(EventBase):
                      "utc": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')}
         return ev
 
-    def to_full_object(self):
-        from flask_login import current_user
+    def to_full_object(self, user_id):
         result = self.to_simple_object()
-        if not current_user.is_anonymous():
-            meetsection = list(filter(lambda m: m["user"] == current_user.id, self.meetsections))[0]
-            result["meetSection"] = {"id": meetsection["id"]}
+        result["organizer"] = self.organizer
+        from app.models.meetsection import Meetsection
+        meetsections = Meetsection.find({"id": {"$in": self.meetsections}})
+        result["meetsections"] = []
+        for _m in meetsections:
+            result["meetsections"].append({
+                "id": _m["id"],
+                "name": _m["name"],
+                "members": [member["email"] for member in _m["members"]]
+            })
         if self.isRecurring:
             result["recurringEvents"] = self.expand()
         elif self.followUp:
@@ -371,7 +402,7 @@ class Event(EventBase):
             "start": {"$gte": start, "$lt": end},
             "isRecurring": False,
             "status": {"$ne": "cancelled"},
-            "meetsections.user": user,
+            "user": user,
             "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
         }
         non_recurring_events = cls.find(non_recurring_query)
@@ -387,7 +418,7 @@ class Event(EventBase):
                                         {"start": {"$lt": end}}]}]},
                      {"$or": [{"isDeleted": {"$exists": False}},
                               {"isDeleted": False}]}],
-            "meetsections.user": user
+            "user": user
         }
         recurring_events = cls.find(recurring_query)
         for _e in recurring_events:

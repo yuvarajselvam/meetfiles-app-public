@@ -59,7 +59,7 @@ def list_meetsections():
     result = []
     for meetsection in meetsections:
         meetsection.pop('_id')
-        result.append(Meetsection(**meetsection).to_full_object())
+        result.append(Meetsection(**meetsection).to_full_object(current_user.id))
     return jsonify(result), 200
 
 
@@ -68,7 +68,7 @@ def get_meetsection(meetsection_id):
     meetsection = Meetsection.find_one(query=query)
     if not meetsection:
         return {"message": "Meetsection not found for user"}, 404
-    return meetsection.to_full_object(), 200
+    return meetsection.to_full_object(current_user.id), 200
 
 
 def edit_meetsection(meetsection_id):
