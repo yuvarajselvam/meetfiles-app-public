@@ -15,6 +15,7 @@ class EventBase(Entity):
     def __init__(self,
                  meetspace: str = None,
                  meetsections: list = None,
+                 user: str = None,
                  title: str = None,
                  start: datetime.datetime = None,
                  end: datetime.datetime = None,
@@ -43,6 +44,7 @@ class EventBase(Entity):
         super().__init__(*args, **kwargs)
         self.meetspace = meetspace
         self.meetsections = meetsections or list()
+        self.user = user
         self.title = title
         self.start = start
         self.end = end
@@ -85,6 +87,14 @@ class EventBase(Entity):
     @meetsections.setter
     def meetsections(self, value):
         self._meetsections = value
+
+    @property
+    def user(self):
+        return self._user
+
+    @user.setter
+    def user(self, value):
+        self._user = value
 
     @property
     def title(self):

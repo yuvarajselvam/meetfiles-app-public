@@ -18,33 +18,40 @@ class Event(EventBase):
     @classmethod
     def sync_google_events(cls, events, account):
         user = account.get_user_id()
-        provider_ids = [ev["id"] for ev in events]
-        _events = cls.find({"providerId": {"$in": provider_ids}})
+
+        _events = cls.find({"providerId": {"$in": [ev["id"] for ev in events]}})
+        meetsection_ids = []
+        for _ev in _events:
+            meetsection_ids += _ev["meetsections"]
+        _meetsections = cls.find({"id": {"$in": list(set(meetsection_ids))}, "members.email": account.email})
+        _meetsections_ids = [m["id"] for m in _meetsections]
         changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
-                from app.models.meetsection import Meetsection
-                default = Meetsection.get_default(account.email).id
-                e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
-                # TODO: Use ETag to verify if event is not already updated
-                if e_obj:
-                    _meetsections = e_obj[0]["meetsections"]
-                    meetsections = _meetsections
-                    if not list(filter(lambda m: m["user"] == user, _meetsections)):
-                        meetsections.append({"id": default, "user": user})
+                event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                if event_objects:
+                    user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
+                    if user_event_object:
+                        meetsections = user_event_object[0]["meetsections"]
+                    else:
+                        meetsections = []
+                        for event_object in event_objects:
+                            meetsections += [m for m in event_object["meetsections"] if m in _meetsections_ids]
                 else:
-                    meetsections = [{"id": default, "user": user}]
+                    from app.models.meetsection import Meetsection
+                    meetsections = [Meetsection.get_default(account.email).id]
+                meetsections = list(set(meetsections))
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetsections": meetsections}
+                params = {"meetsections": meetsections, "user": user}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
                 operation = UpdateOne({"providerId": event.providerId},
                                       {"$set": event.json()}, upsert=True)
                 bulk_write_data[event._collection].append(operation)
-                changed_meetsections |= set([m["id"] for m in meetsections])
+                changed_meetsections = set(meetsections)
             Event.bulk_write(bulk_write_data['events'])
             REE.bulk_write(bulk_write_data['recurring_exception_events'])
         return changed_meetsections
@@ -124,8 +131,12 @@ class Event(EventBase):
     def sync_microsoft_events(cls, events, account):
         service = account.get_service()
         user = account.get_user_id()
-        provider_ids = [ev["id"] for ev in events]
-        _events = cls.find({"providerId": {"$in": provider_ids}})
+        _events = cls.find({"providerId": {"$in": [ev["id"] for ev in events]}})
+        meetsection_ids = []
+        for _ev in _events:
+            meetsection_ids += _ev["meetsections"]
+        _meetsections = cls.find({"id": {"$in": list(set(meetsection_ids))}, "members.email": account.email})
+        _meetsections_ids = [m["id"] for m in _meetsections]
         changed_meetsections = set()
         if events:
             bulk_write_data = {"events": [], "recurring_exception_events": []}
@@ -133,15 +144,19 @@ class Event(EventBase):
             for ev in events:
                 if ev.get("type") == "occurrence":
                     continue
-                meetsections = []
-                e_obj = list(filter(lambda e: e["providerId"] == ev["id"], _events))
-                if e_obj:
-                    _meetsections = e_obj[0]["meetsections"]
-                    meetsections = list(filter(lambda m: m["user"] == user, _meetsections))
-                if not meetsections:
+                event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
+                if event_objects:
+                    user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
+                    if user_event_object:
+                        meetsections = user_event_object[0]["meetsections"]
+                    else:
+                        meetsections = []
+                        for event_object in event_objects:
+                            meetsections += [m for m in event_object["meetsections"] if m in _meetsections_ids]
+                else:
                     from app.models.meetsection import Meetsection
-                    default = Meetsection.get_default(account.email).id
-                    meetsections = [{"id": default, "user": user}]
+                    meetsections = [Meetsection.get_default(account.email).id]
+                meetsections = list(set(meetsections))
                 recurring_event_id = ev.get("seriesMasterId")
                 params = {"meetsections": meetsections}
                 event = Event(**params) if not recurring_event_id else REE(**params)
@@ -394,8 +409,6 @@ class RecurringExceptionEvent(Event):
 
     def generate_id(self):
         original_start_utc = self.originalStart.astimezone(datetime.timezone.utc)
-
-        unix_milli_timestamp = str(int(original_start_utc.timestamp() * 1000))
         master_id = self._recurring_event_provider_id
         master_id = master_id.split('_')[0]
         return master_id + '_' + original_start_utc.strftime('%Y%m%dT%H%M%SZ')
