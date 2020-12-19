@@ -37,7 +37,7 @@ def create_event():
     event = Event(**req_json)
     calendar.add_event(event, follow_up=followup, video_conf_type=conf_type)
     rv = event.json()
-    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections], current_user.id)
     return jsonify(rv), 201
 
 
@@ -46,7 +46,7 @@ def get_event(event_id):
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
-    return event.to_full_object(), 200
+    return event.to_full_object(current_user.id), 200
 
 
 def edit_event(event_id):
@@ -81,7 +81,7 @@ def edit_event(event_id):
     calendar = account.get_calendar()
     calendar.edit_event(event, keys=req_json.keys())
     rv = event.json()
-    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections], current_user.id)
     return jsonify(rv), 200
 
 
@@ -96,7 +96,7 @@ def rsvp_to_event(event_id):
     calendar = account.get_calendar()
     calendar.rsvp_to_event(event, req_json["responseStatus"])
     rv = event.json()
-    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections])
+    Meetsection.bulk_update_firebase([m["id"] for m in event.meetsections], current_user.id)
     return jsonify(rv), 200
 
 

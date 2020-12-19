@@ -1,5 +1,4 @@
 from datetime import datetime
-from flask_login import current_user
 
 from app.models.event import Event
 from app.extensions import firebase_service
@@ -17,14 +16,14 @@ class Meetsection(MeetsectionBase):
                 result[k] = v.isoformat()
         return result
 
-    def to_full_object(self):
+    def to_full_object(self, user_id):
         result = self.to_simple_object()
         result["events"] = []
-        events = self.fetch_events()
+        events = self.fetch_events(user_id)
         for event in events:
             e = Event(**event)
             if e.isRecurring:
-                result["events"] += e.expand()
+                result["events"].append(e.expand_for_firebase())
             else:
                 result["events"].append(e.to_simple_object())
         return result
@@ -37,21 +36,30 @@ class Meetsection(MeetsectionBase):
     def remove_user(self, user_email):
         self.members = [member for member in self.members if not member["email"] == user_email]
 
+    def get_users(self):
+        query = {"accounts.email": {"$in": [member["email"] for member in self.members]}}
+        from app.models.user import User
+        return User.find(query)
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        self.update_firebase()
+        self.update_firebase([u['id'] for u in self.get_users()])
 
-    def update_firebase(self):
-        path = f"meetsections/{self.id}"
-        firebase_service.db_insert(path, self.to_full_object())
+    def update_firebase(self, user_ids):
+        update_obj = dict()
+        for u_id in user_ids:
+            path = f"users/{u_id}/meetsections/{self.id}"
+            update_obj[path] = self.to_full_object(u_id)
+        firebase_service.db_update(update_obj)
 
     @classmethod
-    def bulk_update_firebase(cls, meetsection_ids):
+    def bulk_update_firebase(cls, meetsection_ids, user_id):
         insert_obj = dict()
         meetsections = Meetsection.find({"id": {"$in": meetsection_ids}})
         for m in meetsections:
-            insert_obj[f"meetsections/{m['id']}"] = Meetsection(**m).to_full_object()
-        firebase_service.db_insert(insert_obj)
+            path = f"users/{user_id}/meetsections/{m['id']}"
+            insert_obj[path] = Meetsection(**m).to_full_object(user_id)
+        firebase_service.db_update(insert_obj)
 
     @classmethod
     def get_default_name(cls, user_name):
@@ -69,9 +77,10 @@ class Meetsection(MeetsectionBase):
     def fetch_for_user(cls, user_email):
         return cls.find({"members.email": user_email})
 
-    def fetch_events(self):
+    def fetch_events(self, user_id):
         from app.models.event import Event
         return Event.find({"status": {"$ne": "cancelled"},
-                           "meetsections.id": self.id,
+                           "meetsections": self.id,
+                           "user": user_id,
                            "$or": [{"isDeleted": {"$exists": False}},
                                    {"isDeleted": False}]})

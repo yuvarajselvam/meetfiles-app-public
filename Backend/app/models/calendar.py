@@ -235,10 +235,7 @@ class Calendar(CalendarBase):
             events = self.fetch_microsoft_events()
             changed_meetsections = Event.sync_microsoft_events(events, self._account)
         self.lastSyncedAt = datetime.utcnow()
-        for _meetsection in changed_meetsections:
-            query = {"id": _meetsection}
-            meetsection = Meetsection.find_one(query)
-            meetsection.update_firebase()
+        Meetsection.bulk_update_firebase(list(changed_meetsections), self._account.get_user_id())
         self.save()
 
     def fetch_google_events(self):
