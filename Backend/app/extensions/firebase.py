@@ -26,6 +26,10 @@ class FirebaseService:
         db.reference(path).set(value)
 
     @staticmethod
+    def bulk_insert(value):
+        db.reference().set(value)
+
+    @staticmethod
     def db_update(value):
         db.reference().update(value)
 
