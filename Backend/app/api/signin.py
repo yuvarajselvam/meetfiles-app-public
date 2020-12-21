@@ -3,7 +3,7 @@ import base64
 import logging
 
 from flask_login import login_user
-from flask import Blueprint, session, redirect, request
+from flask import Blueprint, session, redirect, request, current_app
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -61,7 +61,7 @@ def signin_with_google_callback():
     initial = False
     if not user:
         initial = True
-        user_object = {"primaryAccount": Account.Type.GOOGLE.value}
+        user_object = {"primaryAccount": Account.Type.GOOGLE.value, 'timeZone': 'Asia/Kolkata'}
         user = User(**user_object)
         google_object = {
             "providerId": "USR" + user_info["id"],
@@ -75,11 +75,17 @@ def signin_with_google_callback():
         user.add_account(google_object, user.primaryAccount)
     user.authenticate()
     login_user(user)
-    user.sync_calendars(initial=initial)
+    if initial:
+        user.sync_calendars(initial=initial)
     if user.meetspaces:
         path = '/meetspaces'
     session['oauth_token'] = token
     redirect_url = app.config.get('APP_URL') + path
+
+    @current_app.after_response
+    def post_process():
+        if not initial:
+            user.sync_calendars()
     return redirect(redirect_url)
 
 
@@ -109,7 +115,7 @@ def signin_with_microsoft_callback():
     initial = False
     if not user:
         initial = True
-        user_object = {"primaryAccount": Account.Type.MICROSOFT.value}
+        user_object = {"primaryAccount": Account.Type.MICROSOFT.value, 'timeZone': 'Asia/Kolkata'}
         user = User(**user_object)
         microsoft_object = {
             "providerId": "USR" + user_info["id"],
@@ -125,9 +131,15 @@ def signin_with_microsoft_callback():
     login_user(user)
     if user.meetspaces:
         path = '/meetspaces'
-    user.sync_calendars(initial=initial)
+    if initial:
+        user.sync_calendars(initial=initial)
     session['oauth_token'] = token
     redirect_url = app.config.get('APP_URL') + path
+
+    @current_app.after_response
+    def post_process():
+        if not initial:
+            user.sync_calendars()
     return redirect(redirect_url)
 
 
