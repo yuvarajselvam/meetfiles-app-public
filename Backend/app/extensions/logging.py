@@ -37,9 +37,9 @@ class Logger:
                 s += "\n"
                 for k, v in req.items():
                     if isinstance(v, str):
-                        s += f"{k:<14s} : {v:<181.181s}\n"
+                        s += f"{k:<18s} : {v:<181.181s}\n"
                     elif isinstance(v, list):
-                        s += f"{k:<14s} : {str(len(v)) + ' item(s) received.':<81.81s}\n"
+                        s += f"{k:<18s} : {str(len(v)) + ' item(s) received.':<81.81s}\n"
             if not response:
                 s += ('\n' + "".center(180, '-') + '\n')
             self.logger.log(42, s)
@@ -50,9 +50,9 @@ class Logger:
                     if isinstance(response.json, dict):
                         for k, v in response.json.items():
                             if isinstance(v, str):
-                                s += f"{k:<14s} : {v:<181.181s}\n"
+                                s += f"{k:<18s} : {v:<181.181s}\n"
                             elif isinstance(v, list):
-                                s += f"{k:<14s} : {str(len(v)) + ' item(s) returned.':<181.181s}\n"
+                                s += f"{k:<18s} : {str(len(v)) + ' item(s) returned.':<181.181s}\n"
                     elif isinstance(response.json, list):
                         s += f"{str(len(response.json)) + ' item(s) returned.':<181.181s}\n"
                 else:

@@ -1,3 +1,4 @@
+import pytz
 import datetime
 
 from pymongo.operations import UpdateOne
@@ -108,8 +109,10 @@ class Event(EventBase):
     def to_google_event(self, keys=None):
         google_object = {
             "summary": self.title,
-            "start": {"date" if self.isAllDay else "dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')},
-            "end": {"date" if self.isAllDay else "dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')},
+            "start": {"date" if self.isAllDay else "dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%S'),
+                      "timeZone": "UTC"},
+            "end": {"date" if self.isAllDay else "dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%S'),
+                    "timeZone": "UTC"},
             "recurrence": self.recurrence,
             "location": self.location,
             "description": self.description
@@ -229,8 +232,10 @@ class Event(EventBase):
                 "contentType": "HTML",
                 "content": self.description
             },
-            "start": {"dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')},
-            "end": {"dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')},
+            "start": {"dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%S'),
+                      "timeZone": "UTC"},
+            "end": {"dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%S'),
+                    "timeZone": "UTC"},
             "location": {"displayName": self.location},
         }
         attendees = []
@@ -241,7 +246,7 @@ class Event(EventBase):
             [microsoft_object.pop(k, None) for k in microsoft_object.copy() if k not in keys]
         return microsoft_object
 
-    def expand(self, end=None, calendar=False):
+    def expand(self, end=None, calendar=False, timezone=None):
         if not self.isRecurring:
             raise ValueError("Tried to expand non recurring event")
 
@@ -253,14 +258,16 @@ class Event(EventBase):
             "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
         }
         exceptions = RecurringExceptionEvent.find(query)
-        clone = self.to_simple_object() if not calendar else self.to_calendar_object()
+        clone = self.to_simple_object(timezone=timezone) if not calendar else self.to_calendar_object()
         duration = self.end - self.start
         for st in start_times:
-            instance = self._get_instance_from_event(st, duration, exceptions, clone, calendar=calendar)
+            st = st.replace(tzinfo=pytz.utc)
+            instance = self._get_instance_from_event(st, duration, exceptions, clone,
+                                                     calendar=calendar, timezone=timezone)
             instances.append(instance)
         return instances
 
-    def expand_for_firebase(self):
+    def expand_for_firebase(self, timezone=None):
         if not self.isRecurring:
             raise ValueError("Tried to expand non recurring event")
 
@@ -271,43 +278,47 @@ class Event(EventBase):
             "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
         }
         exceptions = RecurringExceptionEvent.find(query)
-        clone = self.to_simple_object()
-        instances = clone.copy()
-        instances["recurringEvents"] = dict()
+        clone = self.to_simple_object(timezone=timezone)
+        parent = clone.copy()
+        parent["recurringEvents"] = dict()
         duration = self.end - self.start
         for st in start_times:
-            instance = self._get_instance_from_event(st, duration, exceptions, clone)
+            st = st.replace(tzinfo=pytz.utc)
+            instance = self._get_instance_from_event(st, duration, exceptions, clone, timezone=timezone)
             start = get_datetime(instance["start"]["date"])
-            if start.year not in instances["recurringEvents"]:
-                instances["recurringEvents"][start.year] = dict()
-            if start.month not in instances["recurringEvents"][start.year]:
-                instances["recurringEvents"][start.year][start.month] = dict()
-            instances["recurringEvents"][start.year][start.month][start.day] = instance
-        return instances
+            if start.year not in parent["recurringEvents"]:
+                parent["recurringEvents"][start.year] = dict()
+            if start.month not in parent["recurringEvents"][start.year]:
+                parent["recurringEvents"][start.year][start.month] = dict()
+            parent["recurringEvents"][start.year][start.month][start.day] = instance
+        return parent
 
-    def _get_instance_from_event(self, start, duration, exceptions, clone, calendar=False):
+    def _get_instance_from_event(self, start, duration, exceptions, clone, calendar=False, timezone=None):
         REE = RecurringExceptionEvent
+        if timezone is None or isinstance(timezone, str):
+            timezone = pytz.timezone(timezone if timezone else 'UTC')
         ree = REE(recurringEventProviderId=self.providerId, originalStart=start)
         exception = list(filter(lambda o: o["id"] == ree.generate_id(), exceptions))
         if exception:
             instance_obj = REE(**exception[0])
             if not calendar:
-                instance = instance_obj.to_simple_object()
+                instance = instance_obj.to_simple_object(timezone=timezone)
             else:
                 instance = instance_obj.to_calendar_object()
         else:
             instance = clone.copy()
             end = start + duration
             if not calendar:
-                instance["start"] = {"date": start.strftime("%Y-%m-%d"),
-                                     "time": start.strftime("%I:%M %p"),
+                instance["start"] = {"date": start.astimezone(timezone).strftime("%Y-%m-%d"),
+                                     "time": start.astimezone(timezone).strftime("%I:%M %p"),
                                      "utc": start.strftime('%Y-%m-%dT%H:%M:%SZ')}
-                instance["end"] = {"date": end.strftime("%Y-%m-%d"),
-                                   "time": end.strftime("%I:%M %p"),
+                instance["end"] = {"date": end.astimezone(timezone).strftime("%Y-%m-%d"),
+                                   "time": end.astimezone(timezone).strftime("%I:%M %p"),
                                    "utc": end.strftime('%Y-%m-%dT%H:%M:%SZ')}
             else:
                 instance["start"] = start.strftime('%Y-%m-%dT%H:%M:%SZ')
                 instance["end"] = end.strftime('%Y-%m-%dT%H:%M:%SZ')
+        instance["id"] = self.id + '_' + start.strftime('%Y%m%dT%H%M%SZ')
         return instance
 
     def next_start_end_in_series(self):
@@ -323,17 +334,25 @@ class Event(EventBase):
         from app.models.user import User
         users = User.find({"accounts.email": {"$in": [a["email"] for a in self.attendees]}})
         attendees = []
+        _attendee = {"email": self.organizer, "type": "organizer"}
+        _user = list(filter(lambda u: u["accounts"][0]["email"] == self.organizer, users))
+        if _user:
+            _attendee["displayName"] = _user[0]["accounts"][0]["name"]
+            _attendee["imageUrl"] = _user[0]["accounts"][0]["imageUrl"]
+        attendees.append(_attendee)
         for _attendee in self.attendees:
             email = _attendee["email"]
-            _attendee["type"] = "organizer" if email == self.organizer else None
-            _user = list(filter(lambda u: u["accounts"][0]["email"] == email, users))
-            if _user:
-                _attendee["displayName"] = _user[0]["accounts"][0]["name"]
-                _attendee["imageUrl"] = _user[0]["accounts"][0]["imageUrl"]
-            attendees.append(_attendee)
-        return attendees if attendees else None
+            if not email == self.organizer:
+                _user = list(filter(lambda u: u["accounts"][0]["email"] == email, users))
+                if _user:
+                    _attendee["displayName"] = _user[0]["accounts"][0]["name"]
+                    _attendee["imageUrl"] = _user[0]["accounts"][0]["imageUrl"]
+                attendees.append(_attendee)
+        return attendees
 
-    def to_simple_object(self):
+    def to_simple_object(self, timezone=None):
+        if timezone is None or isinstance(timezone, str):
+            timezone = pytz.timezone(timezone if timezone else 'UTC')
         ev = {
             "id": self.id,
             "title": self.title,
@@ -346,17 +365,21 @@ class Event(EventBase):
                 "recurrenceText": self.recurrenceText
             }
             if self.recurrenceEnd:
-                ev["recurrence"]["recurrenceEnd"] = self.recurrenceEnd.strftime('%Y-%m-%dT%H:%M:%SZ')
-        ev["start"] = {"date": self.start.strftime("%Y-%m-%d"),
-                       "time": self.start.strftime("%I:%M %p"),
+                end = self.recurrenceEnd + (self.end - self.start)
+                ev["end"] = {"date": end.astimezone(timezone).strftime("%Y-%m-%d"),
+                             "time": end.astimezone(timezone).strftime("%I:%M %p"),
+                             "utc": end.strftime('%Y-%m-%dT%H:%M:%SZ')}
+        else:
+            ev["end"] = {"date": self.end.astimezone(timezone).strftime("%Y-%m-%d"),
+                         "time": self.end.astimezone(timezone).strftime("%I:%M %p"),
+                         "utc": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')}
+        ev["start"] = {"date": self.start.astimezone(timezone).strftime("%Y-%m-%d"),
+                       "time": self.start.astimezone(timezone).strftime("%I:%M %p"),
                        "utc": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')}
-        ev["end"] = {"date": self.end.strftime("%Y-%m-%d"),
-                     "time": self.end.strftime("%I:%M %p"),
-                     "utc": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')}
         return ev
 
-    def to_full_object(self, user_id):
-        result = self.to_simple_object()
+    def to_full_object(self, user_id, timezone=None):
+        result = self.to_simple_object(timezone=timezone)
         result["organizer"] = self.organizer
         from app.models.meetsection import Meetsection
         meetsections = Meetsection.find({"id": {"$in": self.meetsections}})
@@ -368,11 +391,11 @@ class Event(EventBase):
                 "members": [member["email"] for member in _m["members"]]
             })
         if self.isRecurring:
-            result["recurringEvents"] = self.expand()
+            result["recurringEvents"] = self.expand(timezone=timezone)
         elif self.followUp:
             follow_up = FollowUp.find_one({"id": self.followUp})
             follow_up_events = self.find({"id": {"$in": follow_up.events}})
-            result["followUpEvents"] = [Event(**fe).to_simple_object() for fe in follow_up_events]
+            result["followUpEvents"] = [Event(**fe).to_simple_object(timezone=timezone) for fe in follow_up_events]
         return result
 
     def to_calendar_object(self):

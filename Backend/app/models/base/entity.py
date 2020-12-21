@@ -1,5 +1,5 @@
-import uuid
 import inspect
+import shortuuid
 from datetime import datetime
 
 from app.extensions import db
@@ -33,7 +33,7 @@ class Entity(EntityBase):
         self.updatedAt = updatedAt
 
     def generate_id(self):
-        return self._resource_prefix + uuid.uuid4().hex
+        return self._resource_prefix + shortuuid.uuid()[:15]
 
     def save(self, validate=True, session=None):
         if validate:
