@@ -1,4 +1,3 @@
-from os import getenv
 import tldextract as tld
 
 from flask_login import current_user

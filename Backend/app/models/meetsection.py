@@ -16,16 +16,16 @@ class Meetsection(MeetsectionBase):
                 result[k] = v.isoformat()
         return result
 
-    def to_full_object(self, user_id):
+    def to_full_object(self, user_id, timezone=None):
         result = self.to_simple_object()
         result["events"] = []
         events = self.fetch_events(user_id)
         for event in events:
             e = Event(**event)
             if e.isRecurring:
-                result["events"].append(e.expand_for_firebase())
+                result["events"].append(e.expand_for_firebase(timezone=timezone))
             else:
-                result["events"].append(e.to_simple_object())
+                result["events"].append(e.to_simple_object(timezone=timezone))
         return result
 
     def add_user(self, user_email, owner=False):
@@ -43,22 +43,22 @@ class Meetsection(MeetsectionBase):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        self.update_firebase([u['id'] for u in self.get_users()])
+        self.update_firebase(self.get_users())
 
-    def update_firebase(self, user_ids):
+    def update_firebase(self, users):
         update_obj = dict()
-        for u_id in user_ids:
-            path = f"users/{u_id}/meetsections/{self.id}"
-            update_obj[path] = self.to_full_object(u_id)
+        for u in users:
+            path = f"users/{u['id']}/meetsections/{self.id}"
+            update_obj[path] = self.to_full_object(u['id'], timezone=u['timeZone'])
         firebase_service.db_update(update_obj)
 
     @classmethod
-    def bulk_update_firebase(cls, meetsection_ids, user_id):
+    def bulk_update_firebase(cls, meetsection_ids, user):
         insert_obj = dict()
         meetsections = Meetsection.find({"id": {"$in": meetsection_ids}})
         for m in meetsections:
-            path = f"users/{user_id}/meetsections/{m['id']}"
-            insert_obj[path] = Meetsection(**m).to_full_object(user_id)
+            path = f"users/{user.id}/meetsections/{m['id']}"
+            insert_obj[path] = Meetsection(**m).to_full_object(user.id, timezone=user.timeZone)
         firebase_service.db_update(insert_obj)
 
     @classmethod
