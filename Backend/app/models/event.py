@@ -49,7 +49,7 @@ class Event(EventBase):
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
-                operation = UpdateOne({"providerId": event.providerId},
+                operation = UpdateOne({"providerId": event.providerId, "user": user},
                                       {"$set": event.json()}, upsert=True)
                 bulk_write_data[event._collection].append(operation)
                 changed_meetsections = set(meetsections)
@@ -168,7 +168,7 @@ class Event(EventBase):
                     event.isDeleted = True
                 else:
                     event.from_microsoft_event(ev, service)
-                operation = UpdateOne({"providerId": event.providerId},
+                operation = UpdateOne({"providerId": event.providerId, "user": user},
                                       {"$set": event.json()}, upsert=True)
                 changed_meetsections |= set([m["id"] for m in meetsections])
                 bulk_write_data[event._collection].append(operation)
