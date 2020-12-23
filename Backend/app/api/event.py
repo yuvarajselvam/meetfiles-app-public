@@ -45,8 +45,8 @@ def create_event():
 
 
 def get_event(event_id):
-    if "_" in event_id:
-        event_id = event_id.split('_')[0]
+    if "__" in event_id:
+        event_id = event_id.split('__')[0]
     query = {"id": event_id, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
@@ -57,6 +57,8 @@ def get_event(event_id):
 def edit_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
+    if "__" in event_id:
+        event_id = event_id.split('__')[0]
     query = {"id": event_id, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
@@ -93,6 +95,8 @@ def edit_event(event_id):
 def rsvp_to_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
+    if "__" in event_id:
+        event_id = event_id.split('__')[0]
     query = {"id": event_id, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
@@ -107,7 +111,8 @@ def rsvp_to_event(event_id):
 
 def delete_event(event_id):
     account = current_user.get_primary_account()
-
+    if "__" in event_id:
+        event_id = event_id.split('__')[0]
     query = {"id": event_id, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
@@ -122,7 +127,8 @@ def delete_event(event_id):
 
 # def move_event(event_id):
 #     req_json = request.get_json()
-#
+#     if "__" in event_id:
+#         event_id = event_id.split('__')[0]
 #     query = {"id": event_id, "user": current_user.id}
 #     event = Event.find_one(query=query)
 #     if not event:
