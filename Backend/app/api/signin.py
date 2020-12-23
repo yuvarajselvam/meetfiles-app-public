@@ -39,8 +39,14 @@ microsoft_scopes = ["Calendars.ReadWrite", "User.Read.All", "openid", "email", "
 
 def signin_with_google():
     google = OAuth2Session(google_client_id, scope=google_scopes, redirect_uri=google_redirect_uri)
-    auth_url, state = google.authorization_url(google_auth_base,
-                                               access_type="offline", prompt="select_account")
+    if not request.args.get("force", False):
+        auth_url, state = google.authorization_url(google_auth_base,
+                                                   access_type="offline",
+                                                   prompt="select_account")
+    else:
+        auth_url, state = google.authorization_url(google_auth_base,
+                                                   access_type="offline",
+                                                   approval_prompt="force")
     session['oauth_state'] = state
     return redirect(auth_url)
 
@@ -63,6 +69,9 @@ def signin_with_google_callback():
         initial = True
         user_object = {"primaryAccount": Account.Type.GOOGLE.value, 'timeZone': 'Asia/Kolkata'}
         user = User(**user_object)
+        print(token.keys())
+        if "refresh_token" not in token:
+            return redirect(app.config.get('BASE_URL') + '/signin/google/?force=True')
         google_object = {
             "providerId": "USR" + user_info["id"],
             "name": user_info["name"],
@@ -86,6 +95,7 @@ def signin_with_google_callback():
     def post_process():
         if not initial:
             user.sync_calendars()
+
     return redirect(redirect_url)
 
 
@@ -140,6 +150,7 @@ def signin_with_microsoft_callback():
     def post_process():
         if not initial:
             user.sync_calendars()
+
     return redirect(redirect_url)
 
 
