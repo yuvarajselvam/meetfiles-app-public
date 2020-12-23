@@ -127,6 +127,7 @@ class Event(EventBase):
             attendees.append(_attendee)
         google_object["attendees"] = attendees if attendees else None
         if keys:
+            keys = [k if k != "title" else "summary" for k in keys]
             [google_object.pop(k, None) for k in google_object.copy() if k not in keys]
         return google_object
 
