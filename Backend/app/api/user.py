@@ -36,10 +36,15 @@ def get_user(user_id):
     email = user.get_primary_email()
     meetsections = Meetsection.fetch_for_user(email)
     for meetsection in meetsections:
-        m = Meetsection(**meetsection).to_simple_object()
-        if m["createdBy"] == email:
+        m = {
+            "id": meetsection["id"],
+            "name": meetsection["name"],
+            "members": meetsection["members"],
+            "description": meetsection["description"]
+        }
+        if meetsection["createdBy"] == email:
             m["type"] = "self"
-        elif m["createdBy"] == "system":
+        elif meetsection["createdBy"] == "system":
             m["type"] = "default"
         else:
             m["type"] = "shared"
