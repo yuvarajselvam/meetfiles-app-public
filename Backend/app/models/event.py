@@ -332,7 +332,7 @@ class Event(EventBase):
 
     def get_attendees(self):
         from app.models.user import User
-        users = User.find({"accounts.email": {"$in": [a["email"] for a in self.attendees]}})
+        users = User.find({"accounts.email": {"$in": [a["email"] for a in self.attendees] + [self.organizer]}})
         attendees = []
         _attendee = {"email": self.organizer, "type": "organizer"}
         _user = list(filter(lambda u: u["accounts"][0]["email"] == self.organizer, users))
