@@ -31,16 +31,16 @@ class Event(EventBase):
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
+                meetsections = []
                 event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
                 if event_objects:
                     user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
                     if user_event_object:
                         meetsections = user_event_object[0]["meetsections"]
                     else:
-                        meetsections = []
                         for event_object in event_objects:
                             meetsections += [m for m in event_object["meetsections"] if m in _meetsections_ids]
-                else:
+                if not meetsections:
                     from app.models.meetsection import Meetsection
                     meetsections = [Meetsection.get_default(account.email).id]
                 meetsections = list(set(meetsections))
@@ -147,16 +147,16 @@ class Event(EventBase):
             for ev in events:
                 if ev.get("type") == "occurrence":
                     continue
+                meetsections = []
                 event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
                 if event_objects:
                     user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
                     if user_event_object:
                         meetsections = user_event_object[0]["meetsections"]
                     else:
-                        meetsections = []
                         for event_object in event_objects:
                             meetsections += [m for m in event_object["meetsections"] if m in _meetsections_ids]
-                else:
+                if not meetsections:
                     from app.models.meetsection import Meetsection
                     meetsections = [Meetsection.get_default(account.email).id]
                 meetsections = list(set(meetsections))
