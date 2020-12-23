@@ -71,7 +71,7 @@ def signin_with_google_callback():
         user = User(**user_object)
         print(token.keys())
         if "refresh_token" not in token:
-            return redirect(app.config.get('BASE_URL') + '/signin/google/?force=True')
+            return redirect(app.config.get('BASE_URL') + '/api/v1/signin/google/?force=True')
         google_object = {
             "providerId": "USR" + user_info["id"],
             "name": user_info["name"],
