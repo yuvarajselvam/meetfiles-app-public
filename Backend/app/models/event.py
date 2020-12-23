@@ -318,7 +318,7 @@ class Event(EventBase):
             else:
                 instance["start"] = start.strftime('%Y-%m-%dT%H:%M:%SZ')
                 instance["end"] = end.strftime('%Y-%m-%dT%H:%M:%SZ')
-        instance["id"] = self.id + '_' + start.strftime('%Y%m%dT%H%M%SZ')
+        instance["id"] = self.id + '__' + start.strftime('%Y%m%dT%H%M%SZ')
         return instance
 
     def next_start_end_in_series(self):
