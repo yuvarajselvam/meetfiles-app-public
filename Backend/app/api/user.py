@@ -38,8 +38,8 @@ def get_user_context():
         m = {
             "id": meetsection["id"],
             "name": meetsection["name"],
-            "members": meetsection["members"],
-            "description": meetsection["description"]
+            "members": meetsection.get("members", None),
+            "description": meetsection.get("description", None)
         }
         if meetsection["createdBy"] == email:
             m["type"] = "self"
