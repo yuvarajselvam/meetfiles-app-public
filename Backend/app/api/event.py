@@ -2,12 +2,11 @@ import logging
 from datetime import datetime
 
 from flask_login import current_user
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 
+from app.models.user import User
 from app.models.followup import FollowUp
-from app.models.meetsection import Meetsection
 from app.models.event import Event, RecurringExceptionEvent as REE
-
 
 logger = logging.getLogger(__name__)
 api = Blueprint('events', __name__, url_prefix='/api/v1/events')
@@ -42,14 +41,16 @@ def create_event():
     event = Event(**req_json)
     calendar.add_event(event, follow_up=followup, video_conf_type=conf_type)
     rv = event.to_full_object(current_user.id, current_user.timeZone)
-    Meetsection.bulk_update_firebase(event.meetsections, current_user)
+    user_id = current_user.id
+
+    @current_app.after_response
+    def post_process():
+        User.find_one({"id": user_id}).sync_calendars()
     return jsonify(rv), 201
 
 
 def get_event(event_id):
-    if "__" in event_id:
-        event_id = event_id.split('__')[0]
-    query = {"id": event_id, "user": current_user.id}
+    query = {"id": event_id.split('__')[0], "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
@@ -59,30 +60,26 @@ def get_event(event_id):
 def edit_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
-    e = event_id
-    if "__" in event_id:
-        e = event_id.split('__')[0]
-    query = {"id": e, "user": current_user.id}
+    query = {"id": event_id.split('__')[0], "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
 
-    instance_id = None
-    if event.recurrence:
-        if "_" in event.providerId:
-            provider_id = event.providerId.split('_')[0]
-        else:
-            provider_id = event.providerId
-        instance_id = provider_id + '_' + event_id.split('__')[1]
-        duration = event.end - event.start
-        start = datetime.strptime(event_id.split('__')[1], '%Y%m%dT%H%M%SZ')
-        event.start = start
-        event.end = start + duration
-        # edit_type = req_json.pop("editType", None)
-        # if not edit_type:
-        #     return {"message": "Trying to edit recurring event without `editType`"}, 400
+    edit_type = req_json.pop("editType", None)
+    if not edit_type and event.isRecurring:
+        edit_type = 'THIS'
+        # return {"message": "Trying to edit recurring event without `editType`"}, 400
+    instance_id = event_id if event.isRecurring else None
+
+    duration = event.end - event.start
+    original_start = datetime.strptime(instance_id.split('__')[1], '%Y%m%dT%H%M%SZ')
+    original_end = original_start + duration
+    if "start" not in req_json:
+        event.start = original_start
+    if "end" not in req_json:
+        event.end = original_end
 
     for attribute in req_json:
         if hasattr(event, attribute):
@@ -98,10 +95,17 @@ def edit_event(event_id):
         else:
             raise AttributeError(f"Invalid property `{attribute}` for Event")
 
+    if not event.end > event.start:
+        return {"message": "End should be later than start of the event"}, 400
+
     calendar = account.get_calendar()
-    calendar.edit_event(event, instance_id=instance_id, keys=req_json.keys())
-    rv = event.json()
-    Meetsection.bulk_update_firebase(event.meetsections, current_user)
+    calendar.edit_event(event, edit_type=edit_type, instance_id=instance_id, keys=req_json.keys())
+    rv = event.to_full_object(current_user.id, current_user.timeZone)
+    user_id = current_user.id
+
+    @current_app.after_response
+    def post_process():
+        User.find_one({"id": user_id}).sync_calendars()
     return jsonify(rv), 200
 
 
@@ -118,7 +122,11 @@ def rsvp_to_event(event_id):
     calendar = account.get_calendar()
     calendar.rsvp_to_event(event, req_json["responseStatus"])
     rv = event.json()
-    Meetsection.bulk_update_firebase(event.meetsections, current_user)
+    user_id = current_user.id
+
+    @current_app.after_response
+    def post_process():
+        User.find_one({"id": user_id}).sync_calendars()
     return jsonify(rv), 200
 
 
@@ -134,17 +142,19 @@ def delete_event(event_id):
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
 
-    instance_id = None
-    if event.recurrence:
-        if "_" in event.providerId:
-            provider_id = event.providerId.split('_')[0]
-        else:
-            provider_id = event.providerId
-        instance_id = provider_id + '_' + event_id.split('__')[1]
+    delete_type = request.args.get("deleteType", None)
+    if not delete_type and event.isRecurring:
+        delete_type = 'THIS'
+        # return {"message": "Trying to delete recurring event without `deleteType`"}, 400
+    instance_id = event_id if event.isRecurring else None
 
     calendar = account.get_calendar()
-    calendar.delete_event(event, instance_id=instance_id)
-    Meetsection.bulk_update_firebase(event.meetsections, current_user)
+    calendar.delete_event(event, delete_type=delete_type, instance_id=instance_id)
+    user_id = current_user.id
+
+    @current_app.after_response
+    def post_process():
+        User.find_one({"id": user_id}).sync_calendars()
     return {}, 200
 
 
