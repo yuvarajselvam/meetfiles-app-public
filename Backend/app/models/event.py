@@ -31,12 +31,14 @@ class Event(EventBase):
             bulk_write_data = {"events": [], "recurring_exception_events": []}
             REE = RecurringExceptionEvent
             for ev in events:
+                _id = None
                 meetsections = []
                 event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
                 if event_objects:
                     user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
                     if user_event_object:
                         meetsections = user_event_object[0]["meetsections"]
+                        _id = user_event_object[0]['id']
                     else:
                         for event_object in event_objects:
                             meetsections += [m for m in event_object["meetsections"] if m in _meetsections_ids]
@@ -45,7 +47,7 @@ class Event(EventBase):
                     meetsections = [Meetsection.get_default(account.email).id]
                 meetsections = list(set(meetsections))
                 recurring_event_id = ev.get("recurringEventId")
-                params = {"meetsections": meetsections, "user": user}
+                params = {"meetsections": meetsections, "user": user, "id": _id}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 event.from_google_event(ev)
@@ -109,9 +111,11 @@ class Event(EventBase):
     def to_google_event(self, keys=None):
         google_object = {
             "summary": self.title,
-            "start": {"date" if self.isAllDay else "dateTime": self.start.strftime('%Y-%m-%dT%H:%M:%S'),
+            "start": {"date" if self.isAllDay else "dateTime":
+                      self.start.strftime('%Y-%m-%d' if self.isAllDay else '%Y-%m-%dT%H:%M:%S'),
                       "timeZone": "UTC"},
-            "end": {"date" if self.isAllDay else "dateTime": self.end.strftime('%Y-%m-%dT%H:%M:%S'),
+            "end": {"date" if self.isAllDay else "dateTime":
+                    self.end.strftime('%Y-%m-%d' if self.isAllDay else '%Y-%m-%dT%H:%M:%S'),
                     "timeZone": "UTC"},
             "recurrence": self.recurrence,
             "location": self.location,
@@ -148,11 +152,13 @@ class Event(EventBase):
             for ev in events:
                 if ev.get("type") == "occurrence":
                     continue
+                _id = None
                 meetsections = []
                 event_objects = list(filter(lambda e: e["providerId"] == ev["id"], _events))
                 if event_objects:
                     user_event_object = list(filter(lambda e: e["user"] == user, event_objects))
                     if user_event_object:
+                        _id = user_event_object[0]['id']
                         meetsections = user_event_object[0]["meetsections"]
                     else:
                         for event_object in event_objects:
@@ -162,7 +168,7 @@ class Event(EventBase):
                     meetsections = [Meetsection.get_default(account.email).id]
                 meetsections = list(set(meetsections))
                 recurring_event_id = ev.get("seriesMasterId")
-                params = {"meetsections": meetsections, "user": user}
+                params = {"meetsections": meetsections, "user": user, "id": _id}
                 event = Event(**params) if not recurring_event_id else REE(**params)
                 event.recurringEventProviderId = recurring_event_id
                 if ev.get("@removed"):
