@@ -103,20 +103,25 @@ class Calendar(CalendarBase):
             return
         event.from_microsoft_event(result)
 
-    def edit_event(self, event, keys=None):
+    def edit_event(self, event, instance_id=None, keys=None):
         if self.provider == "google":
-            self.edit_google_event(event, keys)
+            self.edit_google_event(event, instance_id, keys)
         elif self.provider == "microsoft":
-            self.edit_microsoft_event(event, keys)
-        event.save()
+            self.edit_microsoft_event(event, instance_id, keys)
+        if not instance_id:
+            event.save()
 
-    def edit_google_event(self, event, keys=None):
+    def edit_google_event(self, event, instance_id=None, keys=None):
         service = self.get_service()
-        google_event = event.to_google_event(keys)
+        if instance_id:
+            google_event = event.to_google_event()
+            google_event.pop('recurrence', None)
+        else:
+            google_event = event.to_google_event(keys)
         ev = None
         try:
             ev = service.events() \
-                .patch(calendarId='primary', eventId=event.providerId,
+                .patch(calendarId='primary', eventId=instance_id or event.providerId,
                        body=google_event, conferenceDataVersion=1) \
                 .execute()
         except GoogleHttpError as e:
@@ -125,7 +130,7 @@ class Calendar(CalendarBase):
         if ev:
             event.from_google_event(ev)
 
-    def edit_microsoft_event(self, event, keys=None):
+    def edit_microsoft_event(self, event, instance_id=None, keys=None):
         service = self.get_service()
         microsoft_event = event.to_microsoft_event(keys)
         url = f"https://graph.microsoft.com/v1.0/me/events/{event.providerId}"
@@ -172,17 +177,17 @@ class Calendar(CalendarBase):
         event.attendees = attendees
         event.save()
 
-    def delete_event(self, event):
+    def delete_event(self, event, instance_id=None):
         if self.provider == "google":
-            self.delete_google_event(event)
+            self.delete_google_event(event, instance_id)
         elif self.provider == "microsoft":
-            self.delete_microsoft_event(event)
+            self.delete_microsoft_event(event, instance_id)
 
-    def delete_google_event(self, event):
+    def delete_google_event(self, event, instance_id=None):
         service = self.get_service()
         try:
             service.events() \
-                .delete(calendarId='primary', eventId=event.providerId) \
+                .delete(calendarId='primary', eventId=instance_id or event.providerId) \
                 .execute()
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
@@ -191,7 +196,7 @@ class Calendar(CalendarBase):
         event.status = Event.Status.CANCELLED.value
         event.save()
 
-    def delete_microsoft_event(self, event):
+    def delete_microsoft_event(self, event, instance_id=None):
         pass
 
     def watch(self):
