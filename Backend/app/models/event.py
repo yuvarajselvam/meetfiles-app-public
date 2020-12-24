@@ -109,14 +109,12 @@ class Event(EventBase):
         self.updatedAt = utc_now
 
     def to_google_event(self, keys=None):
+        start_end_key = "date" if self.isAllDay else "dateTime"
+        start_end_format = '%Y-%m-%d' if self.isAllDay else '%Y-%m-%dT%H:%M:%S'
         google_object = {
             "summary": self.title,
-            "start": {"date" if self.isAllDay else "dateTime":
-                      self.start.strftime('%Y-%m-%d' if self.isAllDay else '%Y-%m-%dT%H:%M:%S'),
-                      "timeZone": "UTC"},
-            "end": {"date" if self.isAllDay else "dateTime":
-                    self.end.strftime('%Y-%m-%d' if self.isAllDay else '%Y-%m-%dT%H:%M:%S'),
-                    "timeZone": "UTC"},
+            "start": {start_end_key: self.start.strftime(start_end_format), "timeZone": "UTC"},
+            "end": {start_end_key: self.end.strftime(start_end_format), "timeZone": "UTC"},
             "recurrence": self.recurrence,
             "location": self.location,
             "description": self.description
@@ -259,18 +257,14 @@ class Event(EventBase):
 
         start_times = get_start_times(self.recurrence, self.start, get_datetime(end))
         instances = []
-        query = {
-            "recurringEventProviderId": self.providerId,
-            "status": {"$ne": "cancelled"},
-            "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
-        }
-        exceptions = RecurringExceptionEvent.find(query)
+        exceptions = RecurringExceptionEvent.find({"recurringEventProviderId": self.providerId})
         clone = self.to_simple_object(timezone=timezone) if not calendar else self.to_calendar_object()
-        duration = self.end - self.start
         for st in start_times:
             st = st.replace(tzinfo=pytz.utc)
-            instance = self._get_instance_from_event(st, duration, exceptions, clone,
-                                                     calendar=calendar, timezone=timezone)
+            instance = self.get_instance_from_event(st, exceptions, clone,
+                                                    calendar=calendar, timezone=timezone)
+            if not instance:
+                continue
             instances.append(instance)
         return instances
 
@@ -279,19 +273,15 @@ class Event(EventBase):
             raise ValueError("Tried to expand non recurring event")
 
         start_times = get_start_times(self.recurrence, self.start)
-        query = {
-            "recurringEventProviderId": self.providerId,
-            "status": {"$ne": "cancelled"},
-            "$or": [{"isDeleted": {"$exists": False}}, {"isDeleted": False}]
-        }
-        exceptions = RecurringExceptionEvent.find(query)
+        exceptions = RecurringExceptionEvent.find({"recurringEventProviderId": self.providerId})
         clone = self.to_simple_object(timezone=timezone)
         parent = clone.copy()
         parent["recurringEvents"] = dict()
-        duration = self.end - self.start
         for st in start_times:
             st = st.replace(tzinfo=pytz.utc)
-            instance = self._get_instance_from_event(st, duration, exceptions, clone, timezone=timezone)
+            instance = self.get_instance_from_event(st, exceptions, clone, timezone=timezone)
+            if not instance:
+                continue
             start = get_datetime(instance["start"]["date"])
             if start.year not in parent["recurringEvents"]:
                 parent["recurringEvents"][start.year] = dict()
@@ -300,13 +290,16 @@ class Event(EventBase):
             parent["recurringEvents"][start.year][start.month][start.day] = instance
         return parent
 
-    def _get_instance_from_event(self, start, duration, exceptions, clone, calendar=False, timezone=None):
+    def get_instance_from_event(self, start, exceptions, clone, calendar=False, timezone=None):
         REE = RecurringExceptionEvent
+        duration = self.end - self.start
         if timezone is None or isinstance(timezone, str):
             timezone = pytz.timezone(timezone if timezone else 'UTC')
         ree = REE(recurringEventProviderId=self.providerId, originalStart=start)
         exception = list(filter(lambda o: o["id"] == ree.generate_id(), exceptions))
         if exception:
+            if exception[0]['status'] == "cancelled":
+                return
             instance_obj = REE(**exception[0])
             if not calendar:
                 instance = instance_obj.to_simple_object(timezone=timezone)
@@ -316,12 +309,8 @@ class Event(EventBase):
             instance = clone.copy()
             end = start + duration
             if not calendar:
-                instance["start"] = {"date": start.astimezone(timezone).strftime("%Y-%m-%d"),
-                                     "time": start.astimezone(timezone).strftime("%I:%M %p"),
-                                     "utc": start.strftime('%Y-%m-%dT%H:%M:%SZ')}
-                instance["end"] = {"date": end.astimezone(timezone).strftime("%Y-%m-%d"),
-                                   "time": end.astimezone(timezone).strftime("%I:%M %p"),
-                                   "utc": end.strftime('%Y-%m-%dT%H:%M:%SZ')}
+                instance["start"] = _get_datetime_for_firebase(start, timezone)
+                instance["end"] = _get_datetime_for_firebase(end, timezone)
             else:
                 instance["start"] = start.strftime('%Y-%m-%dT%H:%M:%SZ')
                 instance["end"] = end.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -373,16 +362,10 @@ class Event(EventBase):
             }
             if self.recurrenceEnd:
                 end = self.recurrenceEnd + (self.end - self.start)
-                ev["end"] = {"date": end.astimezone(timezone).strftime("%Y-%m-%d"),
-                             "time": end.astimezone(timezone).strftime("%I:%M %p"),
-                             "utc": end.strftime('%Y-%m-%dT%H:%M:%SZ')}
+                ev["end"] = _get_datetime_for_firebase(end, timezone)
         else:
-            ev["end"] = {"date": self.end.astimezone(timezone).strftime("%Y-%m-%d"),
-                         "time": self.end.astimezone(timezone).strftime("%I:%M %p"),
-                         "utc": self.end.strftime('%Y-%m-%dT%H:%M:%SZ')}
-        ev["start"] = {"date": self.start.astimezone(timezone).strftime("%Y-%m-%d"),
-                       "time": self.start.astimezone(timezone).strftime("%I:%M %p"),
-                       "utc": self.start.strftime('%Y-%m-%dT%H:%M:%SZ')}
+            ev["end"] = _get_datetime_for_firebase(self.end, timezone)
+        ev["start"] = _get_datetime_for_firebase(self.start, timezone)
         return ev
 
     def to_full_object(self, user_id, timezone=None):
@@ -490,3 +473,10 @@ def _get_datetime(obj):
         return [obj["dateTime"], obj.get("timeZone")]
     elif obj and "date" in obj:
         return [obj["date"], obj.get("timeZone")]
+
+
+def _get_datetime_for_firebase(dt, timezone):
+    dt = get_datetime(dt)
+    return {"date": dt.astimezone(timezone).strftime("%Y-%m-%d"),
+            "time": dt.astimezone(timezone).strftime("%I:%M %p"),
+            "utc": dt.strftime('%Y-%m-%dT%H:%M:%SZ')}

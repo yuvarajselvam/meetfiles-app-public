@@ -89,7 +89,7 @@ class Calendar(CalendarBase):
             event.from_google_event(ev)
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
-            return
+            raise
 
     def add_microsoft_event(self, event, video_conf_type=None):
         service = self.get_service()
@@ -100,37 +100,39 @@ class Calendar(CalendarBase):
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
             logger.error(str(e))
-            return
+            raise
         event.from_microsoft_event(result)
 
-    def edit_event(self, event, instance_id=None, keys=None):
+    def edit_event(self, event, edit_type=None, instance_id=None, keys=None):
+        if (edit_type and not event.isRecurring) or (event.isRecurring and not edit_type):
+            raise ValueError('`EditType` should be provided for recurring event')
         if self.provider == "google":
-            self.edit_google_event(event, instance_id, keys)
+            self.edit_google_event(event, edit_type, instance_id, keys)
         elif self.provider == "microsoft":
-            self.edit_microsoft_event(event, instance_id, keys)
-        if not instance_id:
+            self.edit_microsoft_event(event, edit_type, instance_id, keys)
+        if (not edit_type) or (edit_type != 'THIS'):
             event.save()
 
-    def edit_google_event(self, event, instance_id=None, keys=None):
+    def edit_google_event(self, event, edit_type=None, instance_id=None, keys=None):
         service = self.get_service()
-        if instance_id:
-            google_event = event.to_google_event()
+        if edit_type and edit_type == 'THIS':
+            event_id = event.providerId.split('_')[0] + '_' + instance_id.split('__')[1]
+            google_event = event.to_google_event(keys)
             google_event.pop('recurrence', None)
         else:
             google_event = event.to_google_event(keys)
-        ev = None
+            event_id = event.providerId
         try:
             ev = service.events() \
-                .patch(calendarId='primary', eventId=instance_id or event.providerId,
+                .patch(calendarId='primary', eventId=event_id,
                        body=google_event, conferenceDataVersion=1) \
                 .execute()
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
-            return
-        if ev:
-            event.from_google_event(ev)
+            raise
+        event.from_google_event(ev)
 
-    def edit_microsoft_event(self, event, instance_id=None, keys=None):
+    def edit_microsoft_event(self, event, edit_type=None, instance_id=None, keys=None):
         service = self.get_service()
         microsoft_event = event.to_microsoft_event(keys)
         url = f"https://graph.microsoft.com/v1.0/me/events/{event.providerId}"
@@ -139,7 +141,7 @@ class Calendar(CalendarBase):
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
             logger.error(str(e))
-            return
+            raise
         event.from_microsoft_event(result)
 
     def rsvp_to_event(self, event, response):
@@ -168,7 +170,7 @@ class Calendar(CalendarBase):
             result.raise_for_status()
         except requests.exceptions.HTTPError as e:
             logger.error(str(e))
-            return
+            raise
         attendees = []
         for attendee in event.attendees.copy():
             if attendee["email"] == self._account.email:
@@ -177,26 +179,33 @@ class Calendar(CalendarBase):
         event.attendees = attendees
         event.save()
 
-    def delete_event(self, event, instance_id=None):
+    def delete_event(self, event, delete_type=None, instance_id=None):
+        if (delete_type and not event.isRecurring) or (event.isRecurring and not delete_type):
+            raise ValueError('`DeleteType` should be provided for recurring event')
         if self.provider == "google":
-            self.delete_google_event(event, instance_id)
+            self.delete_google_event(event, delete_type, instance_id)
         elif self.provider == "microsoft":
-            self.delete_microsoft_event(event, instance_id)
+            self.delete_microsoft_event(event, delete_type, instance_id)
+        if (not delete_type) or (delete_type != 'THIS'):
+            event.save()
 
-    def delete_google_event(self, event, instance_id=None):
+    def delete_google_event(self, event, delete_type=None, instance_id=None):
         service = self.get_service()
+        if delete_type and delete_type == 'THIS':
+            event_id = event.providerId.split('_')[0] + '_' + instance_id.split('__')[1]
+        else:
+            event_id = event.providerId
         try:
             service.events() \
-                .delete(calendarId='primary', eventId=instance_id or event.providerId) \
+                .delete(calendarId='primary', eventId=event_id) \
                 .execute()
         except GoogleHttpError as e:
             logger.error(e.resp, e.content, e.error_details)
             return
         event.isDeleted = True
         event.status = Event.Status.CANCELLED.value
-        event.save()
 
-    def delete_microsoft_event(self, event, instance_id=None):
+    def delete_microsoft_event(self, event, delete_type=None, instance_id=None):
         pass
 
     def watch(self):
