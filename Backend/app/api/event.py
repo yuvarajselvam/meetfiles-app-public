@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from flask_login import current_user
 from flask import Blueprint, request, jsonify
@@ -14,6 +15,7 @@ api = Blueprint('events', __name__, url_prefix='/api/v1/events')
 
 def create_event():
     req_json = request.get_json()
+    print(req_json)
     account = current_user.get_account_by_email(req_json["email"])
     calendar = account.get_calendar()
     req_json.pop("id", None)
@@ -57,19 +59,30 @@ def get_event(event_id):
 def edit_event(event_id):
     req_json = request.get_json()
     account = current_user.get_primary_account()
+    e = event_id
     if "__" in event_id:
-        event_id = event_id.split('__')[0]
-    query = {"id": event_id, "user": current_user.id}
+        e = event_id.split('__')[0]
+    query = {"id": e, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
 
+    instance_id = None
     if event.recurrence:
-        edit_type = req_json.pop("editType", None)
-        if not edit_type:
-            return {"message": "Trying to edit recurring event without `editType`"}, 400
+        if "_" in event.providerId:
+            provider_id = event.providerId.split('_')[0]
+        else:
+            provider_id = event.providerId
+        instance_id = provider_id + '_' + event_id.split('__')[1]
+        duration = event.end - event.start
+        start = datetime.strptime(event_id.split('__')[1], '%Y%m%dT%H%M%SZ')
+        event.start = start
+        event.end = start + duration
+        # edit_type = req_json.pop("editType", None)
+        # if not edit_type:
+        #     return {"message": "Trying to edit recurring event without `editType`"}, 400
 
     for attribute in req_json:
         if hasattr(event, attribute):
@@ -86,7 +99,7 @@ def edit_event(event_id):
             raise AttributeError(f"Invalid property `{attribute}` for Event")
 
     calendar = account.get_calendar()
-    calendar.edit_event(event, keys=req_json.keys())
+    calendar.edit_event(event, instance_id=instance_id, keys=req_json.keys())
     rv = event.json()
     Meetsection.bulk_update_firebase(event.meetsections, current_user)
     return jsonify(rv), 200
@@ -111,17 +124,27 @@ def rsvp_to_event(event_id):
 
 def delete_event(event_id):
     account = current_user.get_primary_account()
+    e = event_id
     if "__" in event_id:
-        event_id = event_id.split('__')[0]
-    query = {"id": event_id, "user": current_user.id}
+        e = event_id.split('__')[0]
+    query = {"id": e, "user": current_user.id}
     event = Event.find_one(query=query)
     if not event:
         return {"message": "Event not found for user"}, 404
     if account.email != event.organizer:
         return {"message": "Permission denied"}, 403
 
+    instance_id = None
+    if event.recurrence:
+        if "_" in event.providerId:
+            provider_id = event.providerId.split('_')[0]
+        else:
+            provider_id = event.providerId
+        instance_id = provider_id + '_' + event_id.split('__')[1]
+
     calendar = account.get_calendar()
-    calendar.delete_event(event)
+    calendar.delete_event(event, instance_id=instance_id)
+    Meetsection.bulk_update_firebase(event.meetsections, current_user)
     return {}, 200
 
 

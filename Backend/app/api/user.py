@@ -13,11 +13,10 @@ logger = logging.getLogger(__name__)
 api = Blueprint('users', __name__, url_prefix='/api/v1/users')
 
 
-def get_user(user_id):
-    if user_id == "me":
-        user_id = current_user.id
-        with open(app.config.get('FIREBASE_OPTS_PATH')) as f:
-            firebase = json.load(f)
+def get_user_context():
+    user_id = current_user.id
+    with open(app.config.get('FIREBASE_OPTS_PATH')) as f:
+        firebase = json.load(f)
 
     user = User.find_one({"id": user_id})
     if not user:
@@ -56,6 +55,17 @@ def get_user(user_id):
     return to_ret, 200
 
 
+def get_user(user_id):
+    user = User.find_one({"id": user_id})
+    if not user:
+        return {"message": "User not found"}, 404
+    to_ret = user.json()
+
+    to_ret.pop("primaryAccount", None)
+    to_ret["account"] = to_ret.pop("accounts")[0]
+    return to_ret, 200
+
+
 def edit_user(user_id):
     if user_id == "me":
         user_id = current_user.id
@@ -78,6 +88,7 @@ def sign_out():
     return redirect(redirect_url)
 
 
+api.add_url_rule("/me/", view_func=get_user_context)
 api.add_url_rule("/<user_id>/", view_func=get_user)
-api.add_url_rule("/<user_id>/", methods=['PUT'], view_func=edit_user)
+api.add_url_rule("/<user_id>/preferences/", methods=['PUT'], view_func=edit_user)
 api.add_url_rule("/<user_id>/signout/", methods=['POST'], view_func=sign_out)

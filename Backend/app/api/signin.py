@@ -69,7 +69,6 @@ def signin_with_google_callback():
         initial = True
         user_object = {"primaryAccount": Account.Type.GOOGLE.value, 'timeZone': 'Asia/Kolkata'}
         user = User(**user_object)
-        print(token.keys())
         if "refresh_token" not in token:
             return redirect(app.config.get('BASE_URL') + '/api/v1/signin/google/?force=True')
         google_object = {
